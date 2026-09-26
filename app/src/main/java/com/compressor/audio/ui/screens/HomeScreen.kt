@@ -35,14 +35,12 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.arthenica.ffmpegkit.FFmpegKit
 import com.compressor.audio.AudioItem
 import com.compressor.audio.Preset
-import com.compressor.audio.copyToCache
+import com.compressor.audio.convertToOpus
 import com.compressor.audio.formatBytes
 import com.compressor.audio.formatDuration
 import com.compressor.audio.outputExtension
-import com.compressor.audio.ffmpegArgs
 import com.compressor.audio.publishToDownloads
 import com.compressor.audio.queryDisplayName
 import com.compressor.audio.queryDurationMs
@@ -63,6 +61,7 @@ enum class JobState { QUEUED, WORKING, DONE, ERROR }
 data class Job(
     val item: AudioItem,
     val state: JobState = JobState.QUEUED,
+    val progress: Float = 0f,
     val outBytes: Long = 0,
     val outName: String? = null,
     val error: String? = null,
@@ -85,7 +84,7 @@ fun HomeScreen() {
     val picker = rememberLauncherForActivityResult(
         ActivityResultContracts.GetMultipleContents(),
     ) { uris ->
-        if (uris.isEmpty()) return@OpenMultipleDocuments
+        if (uris.isEmpty()) return@rememberLauncherForActivityResult
         scope.launch(Dispatchers.IO) {
             val items = uris.map { uri ->
                 runCatching {
@@ -145,17 +144,29 @@ fun HomeScreen() {
                 var err: String? = null
                 var outFile: File? = null
                 try {
-                    val cached = copyToCache(context, job.item.uri, job.item.name)
-                    val base = cached.nameWithoutExtension.ifBlank { "audio" }
+                    val base = job.item.name.substringBeforeLast('.').ifBlank { "audio" }
+                        .replace(Regex("[^A-Za-z0-9._-]"), "_").take(60)
                     outFile = File(context.cacheDir, "out_${base}.${outputExtension(preset)}")
                     if (outFile.exists()) outFile.delete()
-                    val session = FFmpegKit.execute(ffmpegArgs(preset, cached.absolutePath, outFile.absolutePath))
-                    if (session.returnCode?.isValueSuccess() == true && outFile.exists()) {
+                    var lastPosted = 0f
+                    convertToOpus(context, job.item.uri, outFile, preset) { frac ->
+                        // throttle Main-thread posts to ~5% steps
+                        if (frac - lastPosted > 0.05f || frac >= 1f) {
+                            lastPosted = frac
+                            val f = frac
+                            scope.launch(Dispatchers.Main) {
+                                jobs = jobs.map {
+                                    if (it.item.uri == job.item.uri) it.copy(progress = f) else it
+                                }
+                            }
+                        }
+                    }
+                    if (outFile.exists() && outFile.length() > 0) {
                         val pubName = "${base}.${outputExtension(preset)}"
                         publishToDownloads(context, outFile, pubName)
                         ok = true
                     } else {
-                        err = session.failStackTrace?.take(160) ?: "FFmpeg failed"
+                        err = "encoder produced no output"
                     }
                 } catch (e: Exception) {
                     err = e.message?.take(160) ?: "failed"
@@ -175,7 +186,7 @@ fun HomeScreen() {
                     if (doneCount == jobs.size) {
                         running = false
                         val saved = jobs.filter { it.state == JobState.DONE }
-                        statusLine = if (saved.isEmpty()) "ALL FAILED - TRY COMPAT PRESET"
+                        statusLine = if (saved.isEmpty()) "ALL FAILED - TRY ANOTHER FILE"
                         else "${saved.size}/${jobs.size} DONE - SAVED TO DOWNLOAD/AUDIOCOMPRESSOR"
                     }
                 }
@@ -373,6 +384,10 @@ private fun FileRow(job: Job, isPlaying: Boolean, onPlay: () -> Unit) {
                     else -> MonoTokens.Ash
                 },
             )
+        }
+        if (job.state == JobState.WORKING) {
+            Spacer(Modifier.height(8.dp))
+            VinlandProgress(fraction = job.progress)
         }
         if (job.state == JobState.ERROR) {
             Spacer(Modifier.height(4.dp))

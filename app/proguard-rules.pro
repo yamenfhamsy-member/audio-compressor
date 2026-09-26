@@ -1,3 +1,2 @@
 # Add project specific ProGuard rules here.
--keep class com.arthenica.** { *; }
--dontwarn com.arthenica.**
+-dontwarn org.concentus.**

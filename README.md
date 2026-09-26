@@ -1,14 +1,21 @@
 # Audio Compressor
 
-Native Kotlin Android app. Converts audio files (MP3/M4A/WAV/FLAC) to **Opus** (`.opus`) or **Vorbis** (`.ogg`) to reduce size. Offline-first, all processing on-device via FFmpeg.
+Native Kotlin Android app. Converts audio files (MP3/M4A/WAV/FLAC) to **Opus** (`.opus`) to reduce size. Offline-first, all processing on-device with **zero native dependencies**:
+
+1. `MediaExtractor` + `MediaCodec` (built into Android) decode the source to PCM.
+2. A small linear resampler brings everything to 48 kHz.
+3. `Concentus` (pure-JVM Opus port) encodes 20 ms frames.
+4. A hand-rolled Ogg muxer (`OggOpusWriter`, RFC 3533 + RFC 7845) writes the file.
+
+No FFmpeg, no NDK — the APK stays tiny (~4 MB) and CI builds in minutes.
 
 ## Presets
 
 | Preset | Codec | Setting | Typical saving |
 |---|---|---|---|
-| Music | libopus | 96k stereo 48kHz VBR audio | ~50% |
-| Voice | libopus | 24k mono 24kHz VBR voip | ~88% |
-| Compat | libvorbis | q4 ogg | ~30% |
+| Music | Opus | 96k stereo | ~50% |
+| Balanced | Opus | 64k stereo | ~65% |
+| Voice | Opus | 24k mono voip | ~88% |
 
 Note: MP3 -> Opus is lossy-to-lossy. Quality cannot be restored; the goal is smaller size at acceptable quality.
 
