@@ -66,4 +66,23 @@
     <string name="split_cancel">Cancel split</string>
     <string name="split_cancelled">Split cancelled</string>
     <string name="split_saved">Saved: %1$s and %2$s</string>
+
+    <string name="sec_stt">06 - Audio to words</string>
+    <string name="stt_desc">Turns speech in the audio file into written text (Arabic) offline. Downloads the model once (~333MB), then works without internet.</string>
+    <string name="stt_downloading">Downloading speech model %d%%</string>
+    <string name="stt_extracting">Preparing model %d%%</string>
+    <string name="stt_ready">Speech model ready — works offline</string>
+    <string name="stt_missing">Speech model not downloaded</string>
+    <string name="stt_failed">Speech model download failed — check internet and retry</string>
+    <string name="download_stt">Download speech model</string>
+    <string name="stt_btn">Transcribe</string>
+    <string name="stt_n">Transcribe (%d)</string>
+    <string name="transcribing">Transcribing %d/%d</string>
+    <string name="stt_cancel">Cancel transcription</string>
+    <string name="stt_cancelled">Transcription cancelled</string>
+    <string name="stt_empty">No speech detected in the file</string>
+    <string name="save_txt">Save TXT</string>
+    <string name="copy_text">Copy</string>
+    <string name="copied">Text copied</string>
+    <string name="saved_txt">Saved: %1$s</string>
 </resources>

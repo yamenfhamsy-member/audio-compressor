@@ -1,7 +1,11 @@
 package com.compressor.audio.ui.screens
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.media.MediaPlayer
 import android.net.Uri
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -42,6 +46,7 @@ import com.compressor.audio.OutputMode
 import com.compressor.audio.Preset
 import com.compressor.audio.R
 import com.compressor.audio.StemSplit
+import com.compressor.audio.SttEngine
 import com.compressor.audio.WavWriter
 import com.compressor.audio.convertToM4a
 import com.compressor.audio.convertToOpus
@@ -79,6 +84,8 @@ data class Job(
     val error: String? = null,
     /** Optional DONE label override (e.g. split output file names). */
     val note: String? = null,
+    /** Transcribed speech text (section 06). */
+    val transcript: String? = null,
     val id: String = java.util.UUID.randomUUID().toString(),
 )
 
@@ -407,6 +414,140 @@ fun HomeScreen(lang: String, onToggleLang: () -> Unit) {
         }
     }
 
+    // ---- Speech to text (section 06) ----
+    var sttStatus by remember { mutableStateOf<ModelManager.Status?>(null) }
+    var sttDownloadId by remember { mutableStateOf(-1L) }
+    var transcribing by remember { mutableStateOf(false) }
+    val sttCancel = remember { AtomicBoolean(false) }
+
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        sttStatus = withContext(Dispatchers.IO) {
+            when {
+                ModelManager.isSttReady(context) -> ModelManager.Status.Ready
+                ModelManager.isSttZipReady(context) -> ModelManager.Status.Downloading(1f)
+                else -> ModelManager.Status.Missing
+            }
+        }
+    }
+
+    fun pollStt(id: Long) {
+        scope.launch(Dispatchers.IO) {
+            while (true) {
+                val st = ModelManager.sttStatus(context, id)
+                withContext(Dispatchers.Main) { sttStatus = st }
+                if (st is ModelManager.Status.Downloading && st.fraction >= 1f &&
+                    !ModelManager.isSttReady(context)
+                ) {
+                    // Zip complete — extract with progress, then re-check.
+                    val dir = ModelManager.extractStt(context) { f ->
+                        scope.launch(Dispatchers.Main) {
+                            sttStatus = ModelManager.Status.Downloading(0.85f + 0.15f * f)
+                        }
+                    }
+                    withContext(Dispatchers.Main) {
+                        sttStatus = if (dir != null) ModelManager.Status.Ready
+                        else ModelManager.Status.Failed
+                    }
+                    break
+                }
+                if (st !is ModelManager.Status.Downloading) break
+                delay(1000)
+            }
+        }
+    }
+
+    fun runTranscribe() {
+        if (transcribing || running || splitting || jobs.isEmpty()) return
+        if (sttStatus !is ModelManager.Status.Ready) return
+        val snapshot = jobs.toList()
+        val cancelledMsg = context.getString(R.string.stt_cancelled)
+        val noAudioMsg = context.getString(R.string.no_audio)
+        val emptyMsg = context.getString(R.string.stt_empty)
+        transcribing = true
+        sttCancel.set(false)
+        doneCount = 0
+        scope.launch(Dispatchers.IO) {
+            val modelDir = ModelManager.sttDir(context).absolutePath
+            snapshot.forEachIndexed { idx, job ->
+                withContext(Dispatchers.Main) {
+                    jobs = jobs.map {
+                        if (it.id == job.id) it.copy(state = JobState.WORKING, progress = 0f) else it
+                    }
+                    statusLine = context.getString(R.string.transcribing, idx + 1, snapshot.size)
+                }
+                var err: String? = null
+                var text: String? = null
+                try {
+                    if (!job.item.hasAudio) {
+                        err = noAudioMsg
+                    } else {
+                        fun post(frac: Float) {
+                            scope.launch(Dispatchers.Main) {
+                                jobs = jobs.map {
+                                    if (it.id == job.id) it.copy(progress = frac) else it
+                                }
+                            }
+                        }
+                        val pcm = SttEngine.decodeMono16k(context, job.item.uri)
+                        post(0.05f)
+                        val out = SttEngine.transcribe(
+                            pcm, modelDir,
+                            onProgress = { post(0.05f + 0.95f * it) },
+                            isCancelled = { sttCancel.get() },
+                        )
+                        if (out.isBlank()) err = emptyMsg else text = out
+                        post(1f)
+                    }
+                } catch (e: CancellationException) {
+                    err = cancelledMsg
+                } catch (e: Exception) {
+                    err = e.message?.take(160) ?: context.getString(R.string.st_error)
+                }
+                withContext(Dispatchers.Main) {
+                    jobs = jobs.map {
+                        if (it.id == job.id) {
+                            if (text != null) it.copy(
+                                state = JobState.DONE, progress = 1f, transcript = text,
+                            )
+                            else it.copy(state = JobState.ERROR, error = err)
+                        } else it
+                    }
+                    doneCount++
+                    if (doneCount == snapshot.size || sttCancel.get()) {
+                        transcribing = false
+                        if (sttCancel.get()) statusLine = cancelledMsg
+                    }
+                }
+                if (sttCancel.get()) return@forEachIndexed
+            }
+            withContext(Dispatchers.Main) { transcribing = false }
+        }
+    }
+
+    fun copyText(text: String) {
+        val cm = context.getSystemService(ClipboardManager::class.java)
+        cm.setPrimaryClip(ClipData.newPlainText("transcript", text))
+        Toast.makeText(context, context.getString(R.string.copied), Toast.LENGTH_SHORT).show()
+    }
+
+    fun saveTxt(job: Job) {
+        val text = job.transcript ?: return
+        scope.launch(Dispatchers.IO) {
+            val base = job.item.name.substringBeforeLast('.').ifBlank { "audio" }
+                .replace(Regex("[^A-Za-z0-9._-]"), "_").take(60)
+            val file = File(context.cacheDir, "${base}.txt")
+            runCatching { file.writeText(text) }
+            val uri = publishToDownloads(context, file, "${base}.txt", "text/plain")
+            withContext(Dispatchers.Main) {
+                if (uri != null) {
+                    statusLine = context.getString(R.string.saved_txt, "${base}.txt")
+                } else {
+                    statusLine = context.getString(R.string.status_failed)
+                }
+            }
+        }
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -554,6 +695,8 @@ fun HomeScreen(lang: String, onToggleLang: () -> Unit) {
                         job = job,
                         isPlaying = playingUri == job.item.uri,
                         onPlay = { togglePlay(job.item.uri) },
+                        onCopy = { job.transcript?.let { copyText(it) } },
+                        onSaveTxt = { saveTxt(job) },
                     )
                     Spacer(Modifier.height(8.dp))
                 }
@@ -642,6 +785,71 @@ fun HomeScreen(lang: String, onToggleLang: () -> Unit) {
                         modifier = Modifier.fillMaxWidth(),
                     )
                 }
+                Spacer(Modifier.height(16.dp))
+                SectionLabel(stringResource(R.string.sec_stt))
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    text = stringResource(R.string.stt_desc),
+                    fontFamily = FontFamily.SansSerif,
+                    fontSize = 12.sp,
+                    color = MonoTokens.Ash,
+                )
+                Spacer(Modifier.height(8.dp))
+                val sttLine = when (val st = sttStatus) {
+                    null -> stringResource(R.string.stt_missing)
+                    is ModelManager.Status.Ready -> stringResource(R.string.stt_ready)
+                    is ModelManager.Status.Failed -> stringResource(R.string.stt_failed)
+                    is ModelManager.Status.Downloading -> if (st.fraction >= 0.85f) {
+                        stringResource(R.string.stt_extracting, ((st.fraction - 0.85f) / 0.15f * 100).toInt())
+                    } else {
+                        stringResource(R.string.stt_downloading, (st.fraction / 0.85f * 100).toInt())
+                    }
+                    is ModelManager.Status.Missing -> stringResource(R.string.stt_missing)
+                }
+                Text(
+                    text = sttLine,
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 12.sp,
+                    color = when (sttStatus) {
+                        is ModelManager.Status.Ready -> MonoTokens.SuccessText
+                        is ModelManager.Status.Failed -> MonoTokens.ErrorText
+                        else -> MonoTokens.Ash
+                    },
+                )
+                Spacer(Modifier.height(8.dp))
+                if (sttStatus !is ModelManager.Status.Ready) {
+                    VinlandButton(
+                        label = stringResource(R.string.download_stt),
+                        onClick = {
+                            val id = ModelManager.enqueueStt(context)
+                            sttDownloadId = id
+                            if (id >= 0) {
+                                sttStatus = ModelManager.Status.Downloading(0f)
+                                pollStt(id)
+                            } else if (ModelManager.isSttZipReady(context)) {
+                                sttStatus = ModelManager.Status.Downloading(1f)
+                                pollStt(-1)
+                            } else {
+                                sttStatus = ModelManager.Status.Ready
+                            }
+                        },
+                        primary = false,
+                        enabled = sttStatus !is ModelManager.Status.Downloading,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                } else {
+                    VinlandButton(
+                        label = if (transcribing) stringResource(R.string.stt_cancel)
+                        else if (jobs.isEmpty()) stringResource(R.string.stt_btn)
+                        else stringResource(R.string.stt_n, jobs.size),
+                        onClick = {
+                            if (transcribing) sttCancel.set(true) else runTranscribe()
+                        },
+                        primary = true,
+                        enabled = jobs.isNotEmpty() && !running && !splitting,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
                 Spacer(Modifier.height(24.dp))
             }
         }
@@ -649,7 +857,13 @@ fun HomeScreen(lang: String, onToggleLang: () -> Unit) {
 }
 
 @Composable
-private fun FileRow(job: Job, isPlaying: Boolean, onPlay: () -> Unit) {
+private fun FileRow(
+    job: Job,
+    isPlaying: Boolean,
+    onPlay: () -> Unit,
+    onCopy: () -> Unit,
+    onSaveTxt: () -> Unit,
+) {
     val stateTag = when (job.state) {
         JobState.QUEUED -> stringResource(R.string.st_queued)
         JobState.WORKING -> stringResource(R.string.st_working)
@@ -726,6 +940,32 @@ private fun FileRow(job: Job, isPlaying: Boolean, onPlay: () -> Unit) {
             Spacer(Modifier.height(8.dp))
             VinlandProgress(fraction = job.progress)
         }
+        if (job.transcript != null) {
+            Spacer(Modifier.height(8.dp))
+            Text(
+                text = job.transcript,
+                fontFamily = FontFamily.SansSerif,
+                fontSize = 13.sp,
+                lineHeight = 20.sp,
+                color = MonoTokens.Bone,
+                maxLines = 8,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+            )
+            Spacer(Modifier.height(8.dp))
+            Row(Modifier.fillMaxWidth()) {
+                MiniButton(
+                    label = stringResource(R.string.copy_text),
+                    onClick = onCopy,
+                    modifier = Modifier.weight(1f),
+                )
+                Spacer(Modifier.width(8.dp))
+                MiniButton(
+                    label = stringResource(R.string.save_txt),
+                    onClick = onSaveTxt,
+                    modifier = Modifier.weight(1f),
+                )
+            }
+        }
         if (job.state == JobState.ERROR) {
             Spacer(Modifier.height(4.dp))
             Text(
@@ -735,5 +975,27 @@ private fun FileRow(job: Job, isPlaying: Boolean, onPlay: () -> Unit) {
                 color = MonoTokens.ErrorText,
             )
         }
+    }
+}
+
+/** Small chiseled action button for row-level actions (copy / save). */
+@Composable
+private fun MiniButton(label: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(2.dp))
+            .background(MonoTokens.Steel)
+            .border(1.dp, MonoTokens.BorderBlade)
+            .clickable(onClick = onClick)
+            .padding(vertical = 10.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = label,
+            fontFamily = FontFamily.Monospace,
+            fontWeight = FontWeight.Bold,
+            fontSize = 12.sp,
+            color = MonoTokens.Bone,
+        )
     }
 }

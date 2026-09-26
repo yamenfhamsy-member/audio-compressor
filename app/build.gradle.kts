@@ -72,4 +72,6 @@ dependencies {
     // On-device stem separation: ONNX Runtime + pure-JVM FFT (no NDK build).
     implementation("com.microsoft.onnxruntime:onnxruntime-android:1.30.0")
     implementation("com.github.wendykierp:JTransforms:3.1")
+    // Offline Arabic speech-to-text (prebuilt AAR incl. native libs).
+    implementation("com.alphacephei:vosk-android:0.3.75")
 }

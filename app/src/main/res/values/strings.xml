@@ -66,4 +66,23 @@
     <string name="split_cancel">إلغاء الفصل</string>
     <string name="split_cancelled">أُلغي الفصل</string>
     <string name="split_saved">حُفظ: %1$s و %2$s</string>
+
+    <string name="sec_stt">06 - الصوت إلى كلمات</string>
+    <string name="stt_desc">يحوّل الكلام في الملف الصوتي إلى نص مكتوب (عربي) أوفلاين. يحتاج تحميل موديل مرة واحدة (~333MB) ثم يعمل بدون إنترنت.</string>
+    <string name="stt_downloading">جارٍ تحميل موديل الكلام %d%%</string>
+    <string name="stt_extracting">جارٍ تجهيز الموديل %d%%</string>
+    <string name="stt_ready">موديل الكلام جاهز — يعمل أوفلاين</string>
+    <string name="stt_missing">موديل الكلام غير محمّل</string>
+    <string name="stt_failed">فشل تحميل موديل الكلام — تحقق من الإنترنت وحاول</string>
+    <string name="download_stt">تحميل موديل الكلام</string>
+    <string name="stt_btn">تحويل لكلمات</string>
+    <string name="stt_n">تحويل لكلمات (%d)</string>
+    <string name="transcribing">جارٍ النسخ %d/%d</string>
+    <string name="stt_cancel">إلغاء النسخ</string>
+    <string name="stt_cancelled">أُلغي النسخ</string>
+    <string name="stt_empty">لا كلام مكتشف في الملف</string>
+    <string name="save_txt">حفظ TXT</string>
+    <string name="copy_text">نسخ</string>
+    <string name="copied">نُسخ النص</string>
+    <string name="saved_txt">حُفظ: %1$s</string>
 </resources>

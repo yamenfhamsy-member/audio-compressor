@@ -18,6 +18,12 @@ Splits a song into `*_vocals.wav` + `*_instrumental.wav` using UVR-MDX-NET-Voc_F
 with a host STFT/iSTFT pipeline. The 64 MB model downloads once from GitHub
 Releases, then works fully offline. STFT runs on pure-JVM FFT (JTransforms).
 
+## Speech to text (offline Arabic)
+
+Transcribes speech in audio files to written text with Vosk (Arabic mgb2 model,
+one-time ~333 MB download, fully offline after). Each result can be copied to
+the clipboard or saved as `.txt` in Download/ThorfinAudioWorld.
+
 ## Presets (Opus and M4A)
 
 | Preset | Opus setting | M4A setting | Typical saving |
