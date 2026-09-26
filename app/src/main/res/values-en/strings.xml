@@ -52,4 +52,18 @@
     <string name="status_playing">Playing preview</string>
     <string name="status_loading">Loading preview</string>
     <string name="status_play_failed">Playback failed</string>
+
+    <string name="sec_split">05 - Vocal split</string>
+    <string name="split_desc">Splits a song into vocals and instrumental as two WAV files. Downloads the model once (~64MB), then works fully offline. Slow on phones.</string>
+    <string name="download_model">Download split model</string>
+    <string name="model_downloading">Downloading model %d%%</string>
+    <string name="model_ready">Model ready — works offline</string>
+    <string name="model_missing">Model not downloaded</string>
+    <string name="model_failed">Model download failed — check internet and retry</string>
+    <string name="split_btn">Split vocals</string>
+    <string name="split_n">Split vocals (%d)</string>
+    <string name="splitting">Splitting %d/%d</string>
+    <string name="split_cancel">Cancel split</string>
+    <string name="split_cancelled">Split cancelled</string>
+    <string name="split_saved">Saved: %1$s and %2$s</string>
 </resources>

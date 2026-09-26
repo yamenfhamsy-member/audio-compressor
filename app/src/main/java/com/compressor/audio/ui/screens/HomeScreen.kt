@@ -37,9 +37,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.compressor.audio.AudioItem
+import com.compressor.audio.ModelManager
 import com.compressor.audio.OutputMode
 import com.compressor.audio.Preset
 import com.compressor.audio.R
+import com.compressor.audio.StemSplit
+import com.compressor.audio.WavWriter
 import com.compressor.audio.convertToM4a
 import com.compressor.audio.convertToOpus
 import com.compressor.audio.copyMp3Stream
@@ -58,9 +61,12 @@ import com.compressor.audio.ui.components.VinlandButton
 import com.compressor.audio.ui.components.VinlandProgress
 import com.compressor.audio.ui.theme.MonoTokens
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.util.concurrent.CancellationException
+import java.util.concurrent.atomic.AtomicBoolean
 
 enum class JobState { QUEUED, WORKING, DONE, ERROR }
 
@@ -71,6 +77,8 @@ data class Job(
     val outBytes: Long = 0,
     val outName: String? = null,
     val error: String? = null,
+    /** Optional DONE label override (e.g. split output file names). */
+    val note: String? = null,
     val id: String = java.util.UUID.randomUUID().toString(),
 )
 
@@ -291,6 +299,114 @@ fun HomeScreen(lang: String, onToggleLang: () -> Unit) {
         }
     }
 
+    // ---- Vocal split (section 05) ----
+    var modelStatus by remember { mutableStateOf<ModelManager.Status?>(null) }
+    var downloadId by remember { mutableStateOf(-1L) }
+    var splitting by remember { mutableStateOf(false) }
+    val splitCancel = remember { AtomicBoolean(false) }
+
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        modelStatus = withContext(Dispatchers.IO) {
+            if (ModelManager.isReady(context)) ModelManager.Status.Ready
+            else ModelManager.Status.Missing
+        }
+    }
+
+    fun pollDownload(id: Long) {
+        scope.launch(Dispatchers.IO) {
+            while (true) {
+                val st = ModelManager.query(context, id)
+                withContext(Dispatchers.Main) { modelStatus = st }
+                if (st !is ModelManager.Status.Downloading) break
+                delay(1000)
+            }
+        }
+    }
+
+    fun runSplit() {
+        if (splitting || running || jobs.isEmpty()) return
+        if (modelStatus !is ModelManager.Status.Ready) return
+        val snapshot = jobs.toList()
+        val cancelledMsg = context.getString(R.string.split_cancelled)
+        val noAudioMsg = context.getString(R.string.no_audio)
+        splitting = true
+        splitCancel.set(false)
+        doneCount = 0
+        scope.launch(Dispatchers.IO) {
+            val modelPath = ModelManager.modelFile(context).absolutePath
+            snapshot.forEachIndexed { idx, job ->
+                withContext(Dispatchers.Main) {
+                    jobs = jobs.map {
+                        if (it.id == job.id) it.copy(state = JobState.WORKING, progress = 0f) else it
+                    }
+                    statusLine = context.getString(R.string.splitting, idx + 1, snapshot.size)
+                }
+                var ok = false
+                var err: String? = null
+                var names = ""
+                try {
+                    if (!job.item.hasAudio) {
+                        err = noAudioMsg
+                    } else {
+                        val base = job.item.name.substringBeforeLast('.').ifBlank { "audio" }
+                            .replace(Regex("[^A-Za-z0-9._-]"), "_").take(60)
+                        fun post(frac: Float) {
+                            scope.launch(Dispatchers.Main) {
+                                jobs = jobs.map {
+                                    if (it.id == job.id) it.copy(progress = frac) else it
+                                }
+                            }
+                        }
+                        val (mix, frames) = StemSplit.decodeMix(context, job.item.uri)
+                        post(0.1f)
+                        val stems = StemSplit.split(
+                            mix, frames, modelPath,
+                            onProgress = { post(0.1f + 0.8f * it) },
+                            isCancelled = { splitCancel.get() },
+                        )
+                        val vocFile = File(context.cacheDir, "${base}_vocals.wav")
+                        val insFile = File(context.cacheDir, "${base}_instrumental.wav")
+                        WavWriter.write(vocFile, stems.vocals, StemSplit.MIX_RATE, 2)
+                        WavWriter.write(insFile, stems.instrumental, StemSplit.MIX_RATE, 2)
+                        post(0.95f)
+                        val v = publishToDownloads(context, vocFile, "${base}_vocals.wav", "audio/wav")
+                        val m = publishToDownloads(context, insFile, "${base}_instrumental.wav", "audio/wav")
+                        if (v != null && m != null) {
+                            ok = true
+                            names = context.getString(
+                                R.string.split_saved, "${base}_vocals.wav", "${base}_instrumental.wav",
+                            )
+                        }
+                        post(1f)
+                    }
+                } catch (e: CancellationException) {
+                    err = cancelledMsg
+                } catch (e: Exception) {
+                    err = e.message?.take(160) ?: context.getString(R.string.st_error)
+                }
+                withContext(Dispatchers.Main) {
+                    jobs = jobs.map {
+                        if (it.id == job.id) {
+                            if (ok) it.copy(
+                                state = JobState.DONE, progress = 1f,
+                                outBytes = 0, outName = names, note = names,
+                            )
+                            else it.copy(state = JobState.ERROR, error = err)
+                        } else it
+                    }
+                    doneCount++
+                    if (names.isNotEmpty() && ok) statusLine = names
+                    if (doneCount == snapshot.size || splitCancel.get()) {
+                        splitting = false
+                        if (splitCancel.get()) statusLine = cancelledMsg
+                    }
+                }
+                if (splitCancel.get()) return@forEachIndexed
+            }
+            withContext(Dispatchers.Main) { splitting = false }
+        }
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -467,6 +583,65 @@ fun HomeScreen(lang: String, onToggleLang: () -> Unit) {
                     fontSize = 12.sp,
                     color = MonoTokens.Ash,
                 )
+                Spacer(Modifier.height(16.dp))
+                SectionLabel(stringResource(R.string.sec_split))
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    text = stringResource(R.string.split_desc),
+                    fontFamily = FontFamily.SansSerif,
+                    fontSize = 12.sp,
+                    color = MonoTokens.Ash,
+                )
+                Spacer(Modifier.height(8.dp))
+                val modelLine = when (val st = modelStatus) {
+                    null -> stringResource(R.string.model_missing)
+                    is ModelManager.Status.Ready -> stringResource(R.string.model_ready)
+                    is ModelManager.Status.Failed -> stringResource(R.string.model_failed)
+                    is ModelManager.Status.Downloading ->
+                        stringResource(R.string.model_downloading, (st.fraction * 100).toInt())
+                    is ModelManager.Status.Missing -> stringResource(R.string.model_missing)
+                }
+                Text(
+                    text = modelLine,
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 12.sp,
+                    color = when (modelStatus) {
+                        is ModelManager.Status.Ready -> MonoTokens.SuccessText
+                        is ModelManager.Status.Failed -> MonoTokens.ErrorText
+                        else -> MonoTokens.Ash
+                    },
+                )
+                Spacer(Modifier.height(8.dp))
+                if (modelStatus !is ModelManager.Status.Ready) {
+                    VinlandButton(
+                        label = stringResource(R.string.download_model),
+                        onClick = {
+                            val id = ModelManager.enqueue(context)
+                            downloadId = id
+                            if (id >= 0) {
+                                modelStatus = ModelManager.Status.Downloading(0f)
+                                pollDownload(id)
+                            } else {
+                                modelStatus = ModelManager.Status.Ready
+                            }
+                        },
+                        primary = false,
+                        enabled = modelStatus !is ModelManager.Status.Downloading,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                } else {
+                    VinlandButton(
+                        label = if (splitting) stringResource(R.string.split_cancel)
+                        else if (jobs.isEmpty()) stringResource(R.string.split_btn)
+                        else stringResource(R.string.split_n, jobs.size),
+                        onClick = {
+                            if (splitting) splitCancel.set(true) else runSplit()
+                        },
+                        primary = true,
+                        enabled = jobs.isNotEmpty() && !running,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
                 Spacer(Modifier.height(24.dp))
             }
         }
@@ -478,7 +653,8 @@ private fun FileRow(job: Job, isPlaying: Boolean, onPlay: () -> Unit) {
     val stateTag = when (job.state) {
         JobState.QUEUED -> stringResource(R.string.st_queued)
         JobState.WORKING -> stringResource(R.string.st_working)
-        JobState.DONE -> stringResource(R.string.st_done, savedPercent(job.item.sizeBytes, job.outBytes))
+        JobState.DONE -> job.note
+            ?: stringResource(R.string.st_done, savedPercent(job.item.sizeBytes, job.outBytes))
         JobState.ERROR -> stringResource(R.string.st_error)
     }
     Column(

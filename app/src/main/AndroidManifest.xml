@@ -6,10 +6,12 @@
     <uses-permission
         android:name="android.permission.READ_EXTERNAL_STORAGE"
         android:maxSdkVersion="32" />
-    <!-- Legacy save path (Download/AudioCompressor) on API 26-28 only -->
+    <!-- Legacy save path (Download/ThorfinAudioWorld) on API 26-28 only -->
     <uses-permission
         android:name="android.permission.WRITE_EXTERNAL_STORAGE"
         android:maxSdkVersion="28" />
+    <!-- One-time vocal-separation model download only; all processing is offline -->
+    <uses-permission android:name="android.permission.INTERNET" />
 
     <application
         android:label="@string/app_name"

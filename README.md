@@ -11,6 +11,13 @@ Three outputs, all on-device, zero native dependencies:
 
 UI is Arabic by default with an EN toggle (RTL supported), Vinland mono-gray style.
 
+## Vocal split (offline)
+
+Splits a song into `*_vocals.wav` + `*_instrumental.wav` using UVR-MDX-NET-Voc_FT
+(MIT weights from the Ultimate Vocal Remover project) via ONNX Runtime on-device,
+with a host STFT/iSTFT pipeline. The 64 MB model downloads once from GitHub
+Releases, then works fully offline. STFT runs on pure-JVM FFT (JTransforms).
+
 ## Presets (Opus and M4A)
 
 | Preset | Opus setting | M4A setting | Typical saving |

@@ -52,4 +52,18 @@
     <string name="status_playing">تشغيل المعاينة</string>
     <string name="status_loading">تحميل المعاينة</string>
     <string name="status_play_failed">تعذّر التشغيل</string>
+
+    <string name="sec_split">05 - فصل الغناء</string>
+    <string name="split_desc">يفصل الأغنية إلى غناء وموسيقى بملفين WAV. يحتاج تحميل الموديل مرة واحدة (~64MB) ثم يعمل أوفلاين. العملية بطيئة على الهاتف.</string>
+    <string name="download_model">تحميل موديل الفصل</string>
+    <string name="model_downloading">جارٍ تحميل الموديل %d%%</string>
+    <string name="model_ready">الموديل جاهز — يعمل أوفلاين</string>
+    <string name="model_missing">الموديل غير محمّل</string>
+    <string name="model_failed">فشل تحميل الموديل — تحقق من الإنترنت وحاول</string>
+    <string name="split_btn">فصل الغناء</string>
+    <string name="split_n">فصل الغناء (%d)</string>
+    <string name="splitting">جارٍ الفصل %d/%d</string>
+    <string name="split_cancel">إلغاء الفصل</string>
+    <string name="split_cancelled">أُلغي الفصل</string>
+    <string name="split_saved">حُفظ: %1$s و %2$s</string>
 </resources>

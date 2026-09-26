@@ -11,9 +11,11 @@ android {
         applicationId = "com.compressor.audio"
         minSdk = 26
         targetSdk = 34
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = 2
+        versionName = "1.1.0"
         vectorDrawables { useSupportLibrary = true }
+        // ORT ships prebuilt .so per ABI; arm64 covers modern phones, v7a the rest.
+        ndk { abiFilters.addAll(listOf("arm64-v8a", "armeabi-v7a")) }
     }
 
     buildTypes {
@@ -67,4 +69,7 @@ dependencies {
     // Pure-JVM Opus encoder (no native libs, keeps the APK tiny).
     // Declared with explicit coordinates (not via version catalog).
     implementation("io.github.jaredmdobson:concentus:1.0.2")
+    // On-device stem separation: ONNX Runtime + pure-JVM FFT (no NDK build).
+    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.30.0")
+    implementation("com.github.wendykierp:JTransforms:3.1")
 }
