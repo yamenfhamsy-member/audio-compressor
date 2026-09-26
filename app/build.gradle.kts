@@ -1,7 +1,6 @@
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
-    id("org.jetbrains.kotlin.plugin.compose")
 }
 
 android {
@@ -38,6 +37,9 @@ android {
     kotlinOptions { jvmTarget = "17" }
 
     buildFeatures { compose = true }
+
+    // Compose compiler for Kotlin 1.9.x (the compose Gradle plugin only exists for Kotlin 2+)
+    composeOptions { kotlinCompilerExtensionVersion = "1.5.14" }
 
     packagingOptions {
         jniLibs { pickFirsts += "**/libc++_shared.so" }
