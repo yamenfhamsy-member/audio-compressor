@@ -453,9 +453,9 @@ fun HomeScreen(lang: String, onToggleLang: () -> Unit) {
                         }
                         try {
                             val out = CloudStt.transcribe(
-                                context, src,
+                                context, src, "ar",
                                 job.id.replace("-", "").take(12),
-                                onProgress = { post(it) },
+                                onProgress = { frac, _ -> post(frac) },
                                 isCancelled = { sttCancel.get() },
                             )
                             if (out.isBlank()) err = emptyMsg else text = out
