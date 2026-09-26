@@ -19,16 +19,15 @@ jobs:
           java-version: "17"
           cache: gradle
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-
+      # ubuntu-latest runners already ship the Android SDK — no setup-android action needed
+      # (android-actions/setup-android@v3 tries to install the removed 'tools' package and fails).
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v3
         with:
           gradle-version: "8.7"
 
       - name: Accept licenses
-        run: yes | sdkmanager --licenses || true
+        run: yes | "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --licenses || yes | sdkmanager --licenses || true
 
       - name: Build release APK
         run: gradle :app:assembleRelease --no-daemon --stacktrace
