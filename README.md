@@ -19,6 +19,10 @@ No FFmpeg, no NDK — the APK stays tiny (~4 MB) and CI builds in minutes.
 
 Note: MP3 -> Opus is lossy-to-lossy. Quality cannot be restored; the goal is smaller size at acceptable quality.
 
+Known limits: resampling uses linear interpolation without a low-pass prefilter, so
+downsampling high-rate sources (96/88.2 kHz) can alias slightly. 44.1/48 kHz sources
+(the common case) are unaffected.
+
 ## Design
 
 UI follows `vinland-design-system/` geometry (1px hairlines, radii 0/2/4, dense lists) adapted to strict mono gray: `#08090B / #111318 / #181B22 / #E6E4DD / #828997`. No gradients, no blur, no pills, no decorative color.

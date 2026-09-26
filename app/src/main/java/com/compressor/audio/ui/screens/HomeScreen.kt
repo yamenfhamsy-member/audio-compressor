@@ -19,7 +19,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Divider
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -65,6 +65,7 @@ data class Job(
     val outBytes: Long = 0,
     val outName: String? = null,
     val error: String? = null,
+    val id: String = java.util.UUID.randomUUID().toString(),
 )
 
 @Composable
@@ -87,12 +88,6 @@ fun HomeScreen() {
         if (uris.isEmpty()) return@rememberLauncherForActivityResult
         scope.launch(Dispatchers.IO) {
             val items = uris.map { uri ->
-                runCatching {
-                    context.contentResolver.takePersistableUriPermission(
-                        uri,
-                        android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION,
-                    )
-                }
                 val name = queryDisplayName(context.contentResolver, uri)
                 AudioItem(
                     uri = uri,
@@ -108,37 +103,74 @@ fun HomeScreen() {
         }
     }
 
+    // Release the preview player when the screen leaves the composition.
+    androidx.compose.runtime.DisposableEffect(Unit) {
+        onDispose {
+            player?.let { p ->
+                runCatching { p.stop() }
+                p.release()
+            }
+            player = null
+        }
+    }
+
     fun togglePlay(uri: Uri) {
         if (playingUri == uri) {
-            player?.stop(); player?.release(); player = null; playingUri = null
+            player?.let { p ->
+                runCatching { p.stop() }
+                p.release()
+            }
+            player = null
+            playingUri = null
             return
         }
-        player?.stop(); player?.release()
-        val p = MediaPlayer()
-        runCatching {
-            p.setDataSource(context, uri)
-            p.prepare()
-            p.start()
-            player = p
-            playingUri = uri
-            p.setOnCompletionListener { playingUri = null }
-        }.onFailure {
-            statusLine = "PLAYBACK FAILED"
+        player?.let { p ->
+            runCatching { p.stop() }
+            p.release()
+        }
+        player = null
+        playingUri = null
+        statusLine = "LOADING PREVIEW"
+        scope.launch(Dispatchers.IO) {
+            val p = MediaPlayer()
+            val ok = runCatching {
+                p.setDataSource(context, uri)
+                p.prepare()
+                p.start()
+            }.isSuccess
+            withContext(Dispatchers.Main) {
+                if (ok) {
+                    player = p
+                    playingUri = uri
+                    statusLine = "PLAYING PREVIEW"
+                    p.setOnCompletionListener {
+                        runCatching { it.stop() }
+                        it.release()
+                        if (playingUri == uri) playingUri = null
+                        player = null
+                    }
+                } else {
+                    runCatching { p.release() }
+                    statusLine = "PLAYBACK FAILED"
+                }
+            }
         }
     }
 
     fun runAll() {
         if (running || jobs.isEmpty()) return
+        // Snapshot once: files added mid-run must not move the denominator.
+        val snapshot = jobs.toList()
         running = true
         doneCount = 0
         val preset = presets[presetIndex]
         scope.launch(Dispatchers.IO) {
-            jobs.toList().forEachIndexed { idx, job ->
+            snapshot.forEachIndexed { idx, job ->
                 withContext(Dispatchers.Main) {
                     jobs = jobs.map {
-                        if (it.item.uri == job.item.uri) it.copy(state = JobState.WORKING) else it
+                        if (it.id == job.id) it.copy(state = JobState.WORKING, progress = 0f) else it
                     }
-                    statusLine = "CONVERTING ${idx + 1}/${jobs.size} - ${preset.title.uppercase()}"
+                    statusLine = "CONVERTING ${idx + 1}/${snapshot.size} - ${preset.title.uppercase()}"
                 }
                 var ok = false
                 var err: String? = null
@@ -156,15 +188,18 @@ fun HomeScreen() {
                             val f = frac
                             scope.launch(Dispatchers.Main) {
                                 jobs = jobs.map {
-                                    if (it.item.uri == job.item.uri) it.copy(progress = f) else it
+                                    if (it.id == job.id) it.copy(progress = f) else it
                                 }
                             }
                         }
                     }
                     if (outFile.exists() && outFile.length() > 0) {
                         val pubName = "${base}.${outputExtension(preset)}"
-                        publishToDownloads(context, outFile, pubName)
-                        ok = true
+                        if (publishToDownloads(context, outFile, pubName) != null) {
+                            ok = true
+                        } else {
+                            err = "could not save to Downloads"
+                        }
                     } else {
                         err = "encoder produced no output"
                     }
@@ -173,9 +208,10 @@ fun HomeScreen() {
                 }
                 withContext(Dispatchers.Main) {
                     jobs = jobs.map {
-                        if (it.item.uri == job.item.uri) {
+                        if (it.id == job.id) {
                             if (ok) it.copy(
                                 state = JobState.DONE,
+                                progress = 1f,
                                 outBytes = outFile?.length() ?: 0,
                                 outName = outFile?.name,
                             )
@@ -183,7 +219,7 @@ fun HomeScreen() {
                         } else it
                     }
                     doneCount++
-                    if (doneCount == jobs.size) {
+                    if (doneCount == snapshot.size) {
                         running = false
                         val saved = jobs.filter { it.state == JobState.DONE }
                         statusLine = if (saved.isEmpty()) "ALL FAILED - TRY ANOTHER FILE"
@@ -215,7 +251,7 @@ fun HomeScreen() {
                 color = MonoTokens.Bone,
             )
         }
-        Divider(color = MonoTokens.BorderBlade, thickness = 1.dp)
+        HorizontalDivider(color = MonoTokens.BorderBlade, thickness = 1.dp)
 
         LazyColumn(
             modifier = Modifier
@@ -229,8 +265,9 @@ fun HomeScreen() {
                 Spacer(Modifier.height(8.dp))
                 VinlandButton(
                     label = if (jobs.isEmpty()) "Pick audio files" else "Add more files",
-                    onClick = { picker.launch("audio/*") },
+                    onClick = { if (!running) picker.launch("audio/*") },
                     primary = false,
+                    enabled = !running,
                     modifier = Modifier.fillMaxWidth(),
                 )
                 Spacer(Modifier.height(8.dp))
@@ -246,7 +283,7 @@ fun HomeScreen() {
                 PresetSegment(
                     options = presets.map { it.title },
                     selected = presetIndex,
-                    onSelect = { presetIndex = it },
+                    onSelect = { if (!running) presetIndex = it },
                 )
                 Spacer(Modifier.height(8.dp))
                 Text(
@@ -281,7 +318,7 @@ fun HomeScreen() {
                     Spacer(Modifier.height(16.dp))
                 }
             } else {
-                items(jobs, key = { it.item.uri.toString() }) { job ->
+                items(jobs, key = { it.id }) { job ->
                     FileRow(
                         job = job,
                         isPlaying = playingUri == job.item.uri,

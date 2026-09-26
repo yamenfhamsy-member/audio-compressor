@@ -18,6 +18,9 @@ android {
 
     buildTypes {
         release {
+            // CI builds are sideloaded for testing: sign with the debug key
+            // so assembleRelease emits app-release.apk (not app-release-unsigned.apk).
+            signingConfig = signingConfigs.getByName("debug")
             isMinifyEnabled = false
             isShrinkResources = false
             proguardFiles(
@@ -42,7 +45,10 @@ android {
     composeOptions { kotlinCompilerExtensionVersion = "1.5.14" }
 
     packagingOptions {
-        resources { excludes += "/META-INF/{AL2.0,LGPL2.1}" }
+        resources {
+            excludes += "/META-INF/AL2.0"
+            excludes += "/META-INF/LGPL2.1"
+        }
     }
 }
 
@@ -56,6 +62,7 @@ dependencies {
     implementation(libs.compose.ui)
     implementation(libs.compose.foundation)
     implementation(libs.compose.material3)
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
 
     // Pure-JVM Opus encoder (no native libs, keeps the APK tiny).
     // Declared with explicit coordinates (not via version catalog).

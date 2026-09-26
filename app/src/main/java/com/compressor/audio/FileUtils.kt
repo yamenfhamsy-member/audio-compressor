@@ -4,13 +4,13 @@ import android.content.ContentResolver
 import android.content.ContentValues
 import android.content.Context
 import android.media.MediaMetadataRetriever
+import android.media.MediaScannerConnection
 import android.net.Uri
 import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
 import android.provider.OpenableColumns
 import java.io.File
-import java.io.FileOutputStream
 
 data class AudioItem(
     val uri: Uri,
@@ -49,16 +49,6 @@ fun queryDurationMs(context: Context, uri: Uri): Long {
     }.getOrDefault(0L).also { runCatching { r.release() } }
 }
 
-/** Copy a SAF uri into app cache so FFmpeg gets a plain file path. */
-fun copyToCache(context: Context, uri: Uri, name: String): File {
-    val safe = name.replace(Regex("[^A-Za-z0-9._-]"), "_").takeLast(80)
-    val out = File(context.cacheDir, "in_$safe")
-    context.contentResolver.openInputStream(uri)?.use { ins ->
-        FileOutputStream(out).use { outs -> ins.copyTo(outs) }
-    }
-    return out
-}
-
 fun formatBytes(bytes: Long): String {
     if (bytes <= 0) return "0 B"
     val units = arrayOf("B", "KB", "MB", "GB")
@@ -81,31 +71,44 @@ fun savedPercent(before: Long, after: Long): Int {
 
 /** Publish a finished file to Download/AudioCompressor so the user keeps it. */
 fun publishToDownloads(context: Context, file: File, displayName: String): Uri? {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+        // Legacy path: MediaStore.Files needs an absolute DATA path pre-Q.
+        @Suppress("DEPRECATION")
+        val dir = File(
+            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
+            "AudioCompressor",
+        )
+        if (!dir.mkdirs() && !dir.isDirectory) return null
+        val dest = File(dir, displayName)
+        runCatching { file.copyTo(dest, overwrite = true) }.onFailure { return null }
+        MediaScannerConnection.scanFile(context, arrayOf(dest.absolutePath), null, null)
+        return Uri.fromFile(dest)
+    }
     val values = ContentValues().apply {
         put(MediaStore.Downloads.DISPLAY_NAME, displayName)
         put(MediaStore.Downloads.MIME_TYPE, "audio/ogg")
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            put(
-                MediaStore.Downloads.RELATIVE_PATH,
-                Environment.DIRECTORY_DOWNLOADS + "/AudioCompressor",
-            )
-            put(MediaStore.Downloads.IS_PENDING, 1)
-        }
+        put(
+            MediaStore.Downloads.RELATIVE_PATH,
+            Environment.DIRECTORY_DOWNLOADS + "/AudioCompressor",
+        )
+        put(MediaStore.Downloads.IS_PENDING, 1)
     }
     val resolver = context.contentResolver
-    val collection = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-        MediaStore.Downloads.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
-    } else {
-        MediaStore.Files.getContentUri("external")
-    }
+    val collection = MediaStore.Downloads.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
     val dest = resolver.insert(collection, values) ?: return null
-    runCatching {
-        resolver.openOutputStream(dest)?.use { outs -> file.inputStream().use { it.copyTo(outs) } }
-    }.onFailure { resolver.delete(dest, null, null); return null }
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-        values.clear()
-        values.put(MediaStore.Downloads.IS_PENDING, 0)
-        resolver.update(dest, values, null, null)
+    val outs = resolver.openOutputStream(dest)
+    if (outs == null) {
+        resolver.delete(dest, null, null)
+        return null
     }
+    runCatching {
+        outs.use { file.inputStream().use { ins -> ins.copyTo(it) } }
+    }.onFailure {
+        resolver.delete(dest, null, null)
+        return null
+    }
+    values.clear()
+    values.put(MediaStore.Downloads.IS_PENDING, 0)
+    resolver.update(dest, values, null, null)
     return dest
 }

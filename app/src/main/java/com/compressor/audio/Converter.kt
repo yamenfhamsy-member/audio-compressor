@@ -76,7 +76,7 @@ fun convertToOpus(
             encoder.bitrate = preset.bitrate
 
             OggOpusWriter(dest, preset.channels, inRate).use { ogg ->
-                val resampler = LinearResampler(inRate, ENCODER_RATE, inChannels)
+                val resampler = LinearResampler(inRate, ENCODER_RATE, preset.channels)
                 val mapper = ChannelMapper(inChannels, preset.channels)
                 // Accumulates encoder-ready (48 kHz, target channels) samples.
                 var pending = ShortArray(FRAME_SAMPLES * preset.channels * 4)
@@ -104,6 +104,18 @@ fun convertToOpus(
                     }
                 }
 
+                fun appendPending(out: ShortArray) {
+                    if (out.isEmpty()) return
+                    val need = pendingCount + out.size / preset.channels
+                    if (need * preset.channels > pending.size) {
+                        var ns = pending.size * 2
+                        while (ns < need * preset.channels) ns *= 2
+                        pending = pending.copyOf(ns)
+                    }
+                    System.arraycopy(out, 0, pending, pendingCount * preset.channels, out.size)
+                    pendingCount += out.size / preset.channels
+                }
+
                 fun feedPcm16(raw: ByteBuffer, bytes: Int) {
                     raw.order(ByteOrder.LITTLE_ENDIAN)
                     val shorts = bytes / 2
@@ -114,16 +126,7 @@ fun convertToOpus(
                     // channel map to interleaved target layout in encoder-rate domain
                     val mapped = mapper.map(inBuf, perChannel)
                     val out = resampler.process(mapped, perChannel)
-                    val outPerChannel = out.size / preset.channels
-                    // grow pending if needed
-                    val need = pendingCount + outPerChannel
-                    if (need * preset.channels > pending.size) {
-                        var ns = pending.size * 2
-                        while (ns < need * preset.channels) ns *= 2
-                        pending = pending.copyOf(ns)
-                    }
-                    System.arraycopy(out, 0, pending, pendingCount * preset.channels, out.size)
-                    pendingCount += outPerChannel
+                    appendPending(out)
                     flushFrames(false)
                 }
 
@@ -156,8 +159,10 @@ fun convertToOpus(
                         outIdx == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED -> { /* ignore */ }
                     }
                 }
+                // Flush resampler tail, then the final (possibly partial, zero-padded) frame.
+                appendPending(resampler.drain())
                 flushFrames(true)
-                ogg.finish(totalEncoded)
+                ogg.finish()
                 onProgress(1f)
             }
         } finally {
@@ -241,16 +246,26 @@ private class LinearResampler(inRate: Int, private val outRate: Int, private val
             pos += step
             oi++
         }
-        // keep unconsumed tail (+1 for interpolation) as carry; rebase pos
+        // keep unconsumed tail as carry; rebase pos
         val consumed = pos.toInt()
         val keepFrom = consumed.coerceIn(0, total)
         val keep = total - keepFrom
-        carry = ShortArray((keep + 1) * channels)
-        System.arraycopy(buf, keepFrom * channels, carry, 0, keep * channels)
-        // duplicate last frame for interpolation safety
-        System.arraycopy(buf, (total - 1) * channels, carry, keep * channels, channels)
-        carryFrames = keep + 1
+        carry = ShortArray(keep * channels)
+        if (keep > 0) {
+            System.arraycopy(buf, keepFrom * channels, carry, 0, keep * channels)
+        }
+        carryFrames = keep
         pos -= consumed
+        return out
+    }
+
+    /** Flush leftover input through zero-padding. Call once at end of stream. */
+    fun drain(): ShortArray {
+        if (carryFrames == 0) return ShortArray(0)
+        val out = process(ShortArray(carryFrames * channels), carryFrames)
+        carryFrames = 0
+        carry = ShortArray(0)
+        pos = 0.0
         return out
     }
 }

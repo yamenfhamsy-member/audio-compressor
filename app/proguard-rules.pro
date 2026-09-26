@@ -1,2 +1,2 @@
 # Add project specific ProGuard rules here.
--dontwarn org.concentus.**
+-dontwarn io.github.jaredmdobson.concentus.**
