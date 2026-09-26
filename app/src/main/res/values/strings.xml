@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Thorfin Audio World</string>
-    <string name="title">Thorfin Audio World</string>
+    <string name="app_name">Thorfin Audio</string>
+    <string name="title">Thorfin Audio</string>
     <string name="lang_toggle">EN</string>
 
     <string name="sec_source">01 - المصدر</string>
