@@ -11,12 +11,9 @@ android {
         applicationId = "com.compressor.audio"
         minSdk = 26
         targetSdk = 34
-        versionCode = 3
-        versionName = "1.2.0"
+        versionCode = 4
+        versionName = "1.3.0"
         vectorDrawables { useSupportLibrary = true }
-        // arm64 covers all modern phones (v7a devices can't run the 63-333MB
-        // ML models anyway); single ABI keeps the APK under Telegram's 50MB cap.
-        ndk { abiFilters.add("arm64-v8a") }
     }
 
     buildTypes {
@@ -71,9 +68,4 @@ dependencies {
     // Pure-JVM Opus encoder (no native libs, keeps the APK tiny).
     // Declared with explicit coordinates (not via version catalog).
     implementation("io.github.jaredmdobson:concentus:1.0.2")
-    // On-device stem separation: ONNX Runtime + pure-JVM FFT (no NDK build).
-    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.30.0")
-    implementation("com.github.wendykierp:JTransforms:3.1")
-    // Offline Arabic speech-to-text (prebuilt AAR incl. native libs).
-    implementation("com.alphacephei:vosk-android:0.3.75")
 }

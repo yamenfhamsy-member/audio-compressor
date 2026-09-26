@@ -43,14 +43,11 @@ import androidx.compose.ui.unit.sp
 import com.compressor.audio.AudioItem
 import com.compressor.audio.CloudSplit
 import com.compressor.audio.CloudStt
-import com.compressor.audio.ModelManager
+import com.compressor.audio.GhActions
 import com.compressor.audio.copyUriToCache
 import com.compressor.audio.OutputMode
 import com.compressor.audio.Preset
 import com.compressor.audio.R
-import com.compressor.audio.StemSplit
-import com.compressor.audio.SttEngine
-import com.compressor.audio.WavWriter
 import com.compressor.audio.convertToM4a
 import com.compressor.audio.convertToOpus
 import com.compressor.audio.copyMp3Stream
@@ -69,7 +66,6 @@ import com.compressor.audio.ui.components.VinlandButton
 import com.compressor.audio.ui.components.VinlandProgress
 import com.compressor.audio.ui.theme.MonoTokens
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -309,33 +305,12 @@ fun HomeScreen(lang: String, onToggleLang: () -> Unit) {
         }
     }
 
-    // ---- Vocal split (section 05) ----
-    var modelStatus by remember { mutableStateOf<ModelManager.Status?>(null) }
-    var downloadId by remember { mutableStateOf(-1L) }
+    // ---- Vocal split (section 05, cloud only) ----
     var splitting by remember { mutableStateOf(false) }
     val splitCancel = remember { AtomicBoolean(false) }
-    var splitEngine by remember { mutableStateOf(CloudSplit.getEngine(context)) }
-    // Declared early: cloud split (below) references STT/transcribe state.
+    // STT/transcribe state declared early: cloud split below references it.
     var transcribing by remember { mutableStateOf(false) }
     val sttCancel = remember { AtomicBoolean(false) }
-
-    androidx.compose.runtime.LaunchedEffect(Unit) {
-        modelStatus = withContext(Dispatchers.IO) {
-            if (ModelManager.isReady(context)) ModelManager.Status.Ready
-            else ModelManager.Status.Missing
-        }
-    }
-
-    fun pollDownload(id: Long) {
-        scope.launch(Dispatchers.IO) {
-            while (true) {
-                val st = ModelManager.query(context, id)
-                withContext(Dispatchers.Main) { modelStatus = st }
-                if (st !is ModelManager.Status.Downloading) break
-                delay(1000)
-            }
-        }
-    }
 
     fun extOf(item: AudioItem): String {
         val fromName = item.name.substringAfterLast('.', "").lowercase()
@@ -346,7 +321,7 @@ fun HomeScreen(lang: String, onToggleLang: () -> Unit) {
 
     fun runSplitCloud() {
         if (splitting || running || transcribing || jobs.isEmpty()) return
-        if (CloudSplit.getPat(context).isBlank()) return
+        if (GhActions.getPat(context).isBlank()) return
         val snapshot = jobs.toList()
         val cancelledMsg = context.getString(R.string.split_cancelled)
         val noAudioMsg = context.getString(R.string.no_audio)
@@ -441,147 +416,19 @@ fun HomeScreen(lang: String, onToggleLang: () -> Unit) {
         }
     }
 
-    fun runSplit() {
-        if (splitting || running || jobs.isEmpty()) return
-        if (modelStatus !is ModelManager.Status.Ready) return
-        val snapshot = jobs.toList()
-        val cancelledMsg = context.getString(R.string.split_cancelled)
-        val noAudioMsg = context.getString(R.string.no_audio)
-        splitting = true
-        splitCancel.set(false)
-        doneCount = 0
-        scope.launch(Dispatchers.IO) {
-            val modelPath = ModelManager.modelFile(context).absolutePath
-            snapshot.forEachIndexed { idx, job ->
-                withContext(Dispatchers.Main) {
-                    jobs = jobs.map {
-                        if (it.id == job.id) it.copy(state = JobState.WORKING, progress = 0f) else it
-                    }
-                    statusLine = context.getString(R.string.splitting, idx + 1, snapshot.size)
-                }
-                var ok = false
-                var err: String? = null
-                var names = ""
-                try {
-                    if (!job.item.hasAudio) {
-                        err = noAudioMsg
-                    } else {
-                        val base = job.item.name.substringBeforeLast('.').ifBlank { "audio" }
-                            .replace(Regex("[^A-Za-z0-9._-]"), "_").take(60)
-                        fun post(frac: Float) {
-                            scope.launch(Dispatchers.Main) {
-                                jobs = jobs.map {
-                                    if (it.id == job.id) it.copy(progress = frac) else it
-                                }
-                            }
-                        }
-                        val (mix, frames) = StemSplit.decodeMix(context, job.item.uri)
-                        post(0.1f)
-                        val stems = StemSplit.split(
-                            mix, frames, modelPath,
-                            onProgress = { post(0.1f + 0.8f * it) },
-                            isCancelled = { splitCancel.get() },
-                        )
-                        val vocFile = File(context.cacheDir, "${base}_vocals.wav")
-                        val insFile = File(context.cacheDir, "${base}_instrumental.wav")
-                        WavWriter.write(vocFile, stems.vocals, StemSplit.MIX_RATE, 2)
-                        WavWriter.write(insFile, stems.instrumental, StemSplit.MIX_RATE, 2)
-                        post(0.95f)
-                        val v = publishToDownloads(context, vocFile, "${base}_vocals.wav", "audio/wav")
-                        val m = publishToDownloads(context, insFile, "${base}_instrumental.wav", "audio/wav")
-                        if (v != null && m != null) {
-                            ok = true
-                            names = context.getString(
-                                R.string.split_saved, "${base}_vocals.wav", "${base}_instrumental.wav",
-                            )
-                        }
-                        post(1f)
-                    }
-                } catch (e: CancellationException) {
-                    err = cancelledMsg
-                } catch (e: Exception) {
-                    err = e.message?.take(160) ?: context.getString(R.string.st_error)
-                }
-                withContext(Dispatchers.Main) {
-                    jobs = jobs.map {
-                        if (it.id == job.id) {
-                            if (ok) it.copy(
-                                state = JobState.DONE, progress = 1f,
-                                outBytes = 0, outName = names, note = names,
-                            )
-                            else it.copy(state = JobState.ERROR, error = err)
-                        } else it
-                    }
-                    doneCount++
-                    if (names.isNotEmpty() && ok) statusLine = names
-                    if (doneCount == snapshot.size || splitCancel.get()) {
-                        splitting = false
-                        if (splitCancel.get()) statusLine = cancelledMsg
-                    }
-                }
-                if (splitCancel.get()) return@forEachIndexed
-            }
-            withContext(Dispatchers.Main) { splitting = false }
-        }
-    }
-
-    // ---- Speech to text (section 06; transcribing state declared above) ----
-    var sttStatus by remember { mutableStateOf<ModelManager.Status?>(null) }
-    var sttDownloadId by remember { mutableStateOf(-1L) }
-    var sttEngine by remember { mutableStateOf(CloudStt.getEngine(context)) }
-
-    androidx.compose.runtime.LaunchedEffect(Unit) {
-        sttStatus = withContext(Dispatchers.IO) {
-            when {
-                ModelManager.isSttReady(context) -> ModelManager.Status.Ready
-                ModelManager.isSttZipReady(context) -> ModelManager.Status.Downloading(1f)
-                else -> ModelManager.Status.Missing
-            }
-        }
-    }
-
-    fun pollStt(id: Long) {
-        scope.launch(Dispatchers.IO) {
-            while (true) {
-                val st = ModelManager.sttStatus(context, id)
-                withContext(Dispatchers.Main) { sttStatus = st }
-                if (st is ModelManager.Status.Downloading && st.fraction >= 1f &&
-                    !ModelManager.isSttReady(context)
-                ) {
-                    // Zip complete — extract with progress, then re-check.
-                    val dir = ModelManager.extractStt(context) { f ->
-                        scope.launch(Dispatchers.Main) {
-                            sttStatus = ModelManager.Status.Downloading(0.85f + 0.15f * f)
-                        }
-                    }
-                    withContext(Dispatchers.Main) {
-                        sttStatus = if (dir != null) ModelManager.Status.Ready
-                        else ModelManager.Status.Failed
-                    }
-                    break
-                }
-                if (st !is ModelManager.Status.Downloading) break
-                delay(1000)
-            }
-        }
-    }
+    // ---- Speech to text (section 06, cloud only) ----
 
     fun runTranscribe() {
         if (transcribing || running || splitting || jobs.isEmpty()) return
-        val useCloud = sttEngine == CloudStt.ENGINE_CLOUD
-        if (!useCloud && sttStatus !is ModelManager.Status.Ready) return
+        if (GhActions.getPat(context).isBlank()) return
         val snapshot = jobs.toList()
         val cancelledMsg = context.getString(R.string.stt_cancelled)
         val noAudioMsg = context.getString(R.string.no_audio)
         val emptyMsg = context.getString(R.string.stt_empty)
-        val setupMsg = context.getString(R.string.cloud_needs_setup)
         transcribing = true
         sttCancel.set(false)
         doneCount = 0
         scope.launch(Dispatchers.IO) {
-            val cloudReady = !useCloud ||
-                (CloudStt.getUrl(context).isNotBlank() && CloudStt.getKey(context).isNotBlank())
-            val modelDir = ModelManager.sttDir(context).absolutePath
             snapshot.forEachIndexed { idx, job ->
                 withContext(Dispatchers.Main) {
                     jobs = jobs.map {
@@ -594,9 +441,9 @@ fun HomeScreen(lang: String, onToggleLang: () -> Unit) {
                 try {
                     if (!job.item.hasAudio) {
                         err = noAudioMsg
-                    } else if (useCloud && !cloudReady) {
-                        err = setupMsg
                     } else {
+                        val ext = extOf(job.item)
+                        val src = copyUriToCache(context, job.item.uri, ext, job.id.take(6))
                         fun post(frac: Float) {
                             scope.launch(Dispatchers.Main) {
                                 jobs = jobs.map {
@@ -604,22 +451,17 @@ fun HomeScreen(lang: String, onToggleLang: () -> Unit) {
                                 }
                             }
                         }
-                        val pcm = SttEngine.decodeMono16k(context, job.item.uri)
-                        post(0.05f)
-                        val out = if (useCloud) {
-                            CloudStt.transcribe(
-                                context, pcm,
-                                onProgress = { post(0.05f + 0.95f * it) },
+                        try {
+                            val out = CloudStt.transcribe(
+                                context, src,
+                                job.id.replace("-", "").take(12),
+                                onProgress = { post(it) },
                                 isCancelled = { sttCancel.get() },
                             )
-                        } else {
-                            SttEngine.transcribe(
-                                pcm, modelDir,
-                                onProgress = { post(0.05f + 0.95f * it) },
-                                isCancelled = { sttCancel.get() },
-                            )
+                            if (out.isBlank()) err = emptyMsg else text = out
+                        } finally {
+                            runCatching { src.delete() }
                         }
-                        if (out.isBlank()) err = emptyMsg else text = out
                         post(1f)
                     }
                 } catch (e: CancellationException) {
@@ -854,177 +696,46 @@ fun HomeScreen(lang: String, onToggleLang: () -> Unit) {
                 SectionLabel(stringResource(R.string.sec_split))
                 Spacer(Modifier.height(8.dp))
                 Text(
-                    text = stringResource(R.string.split_desc),
+                    text = stringResource(R.string.split_cloud_note),
                     fontFamily = FontFamily.SansSerif,
                     fontSize = 12.sp,
                     color = MonoTokens.Ash,
                 )
                 Spacer(Modifier.height(8.dp))
-                PresetSegment(
-                    options = listOf(
-                        stringResource(R.string.split_engine_device),
-                        stringResource(R.string.split_engine_cloud),
-                    ),
-                    selected = if (splitEngine == CloudSplit.ENGINE_CLOUD) 1 else 0,
-                    onSelect = {
-                        if (!splitting) {
-                            splitEngine = if (it == 1) CloudSplit.ENGINE_CLOUD else CloudSplit.ENGINE_DEVICE
-                            CloudSplit.setEngine(context, splitEngine)
-                        }
+                VinlandButton(
+                    label = if (splitting) stringResource(R.string.split_cancel)
+                    else if (jobs.isEmpty()) stringResource(R.string.split_btn)
+                    else stringResource(R.string.split_n, jobs.size),
+                    onClick = {
+                        if (splitting) splitCancel.set(true) else runSplitCloud()
                     },
+                    primary = true,
+                    enabled = jobs.isNotEmpty() && !running && !transcribing &&
+                        GhActions.getPat(context).isNotBlank(),
+                    modifier = Modifier.fillMaxWidth(),
                 )
-                Spacer(Modifier.height(8.dp))
-                val modelLine = when (val st = modelStatus) {
-                    null -> stringResource(R.string.model_missing)
-                    is ModelManager.Status.Ready -> stringResource(R.string.model_ready)
-                    is ModelManager.Status.Failed -> stringResource(R.string.model_failed)
-                    is ModelManager.Status.Downloading ->
-                        stringResource(R.string.model_downloading, (st.fraction * 100).toInt())
-                    is ModelManager.Status.Missing -> stringResource(R.string.model_missing)
-                }
-                Text(
-                    text = modelLine,
-                    fontFamily = FontFamily.Monospace,
-                    fontSize = 12.sp,
-                    color = when (modelStatus) {
-                        is ModelManager.Status.Ready -> MonoTokens.SuccessText
-                        is ModelManager.Status.Failed -> MonoTokens.ErrorText
-                        else -> MonoTokens.Ash
-                    },
-                )
-                Spacer(Modifier.height(8.dp))
-                val useCloudSplit = splitEngine == CloudSplit.ENGINE_CLOUD
-                if (useCloudSplit) {
-                    Text(
-                        text = stringResource(R.string.split_cloud_note),
-                        fontFamily = FontFamily.SansSerif,
-                        fontSize = 12.sp,
-                        color = MonoTokens.Ash,
-                    )
-                    Spacer(Modifier.height(8.dp))
-                    VinlandButton(
-                        label = if (splitting) stringResource(R.string.split_cancel)
-                        else if (jobs.isEmpty()) stringResource(R.string.split_btn)
-                        else stringResource(R.string.split_n, jobs.size),
-                        onClick = {
-                            if (splitting) splitCancel.set(true) else runSplitCloud()
-                        },
-                        primary = true,
-                        enabled = jobs.isNotEmpty() && !running && !transcribing &&
-                            CloudSplit.getPat(context).isNotBlank(),
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                } else if (modelStatus !is ModelManager.Status.Ready) {
-                    VinlandButton(
-                        label = stringResource(R.string.download_model),
-                        onClick = {
-                            val id = ModelManager.enqueue(context)
-                            downloadId = id
-                            if (id >= 0) {
-                                modelStatus = ModelManager.Status.Downloading(0f)
-                                pollDownload(id)
-                            } else {
-                                modelStatus = ModelManager.Status.Ready
-                            }
-                        },
-                        primary = false,
-                        enabled = modelStatus !is ModelManager.Status.Downloading,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                } else {
-                    VinlandButton(
-                        label = if (splitting) stringResource(R.string.split_cancel)
-                        else if (jobs.isEmpty()) stringResource(R.string.split_btn)
-                        else stringResource(R.string.split_n, jobs.size),
-                        onClick = {
-                            if (splitting) splitCancel.set(true) else runSplit()
-                        },
-                        primary = true,
-                        enabled = jobs.isNotEmpty() && !running,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                }
                 Spacer(Modifier.height(16.dp))
                 SectionLabel(stringResource(R.string.sec_stt))
                 Spacer(Modifier.height(8.dp))
                 Text(
-                    text = stringResource(R.string.stt_desc),
+                    text = stringResource(R.string.stt_cloud_note),
                     fontFamily = FontFamily.SansSerif,
                     fontSize = 12.sp,
                     color = MonoTokens.Ash,
                 )
                 Spacer(Modifier.height(8.dp))
-                PresetSegment(
-                    options = listOf(
-                        stringResource(R.string.stt_engine_device),
-                        stringResource(R.string.stt_engine_cloud),
-                    ),
-                    selected = if (sttEngine == CloudStt.ENGINE_CLOUD) 1 else 0,
-                    onSelect = {
-                        if (!transcribing) {
-                            sttEngine = if (it == 1) CloudStt.ENGINE_CLOUD else CloudStt.ENGINE_DEVICE
-                            CloudStt.setEngine(context, sttEngine)
-                        }
+                VinlandButton(
+                    label = if (transcribing) stringResource(R.string.stt_cancel)
+                    else if (jobs.isEmpty()) stringResource(R.string.stt_btn)
+                    else stringResource(R.string.stt_n, jobs.size),
+                    onClick = {
+                        if (transcribing) sttCancel.set(true) else runTranscribe()
                     },
+                    primary = true,
+                    enabled = jobs.isNotEmpty() && !running && !splitting &&
+                        GhActions.getPat(context).isNotBlank(),
+                    modifier = Modifier.fillMaxWidth(),
                 )
-                Spacer(Modifier.height(8.dp))
-                val sttLine = when (val st = sttStatus) {
-                    null -> stringResource(R.string.stt_missing)
-                    is ModelManager.Status.Ready -> stringResource(R.string.stt_ready)
-                    is ModelManager.Status.Failed -> stringResource(R.string.stt_failed)
-                    is ModelManager.Status.Downloading -> if (st.fraction >= 0.85f) {
-                        stringResource(R.string.stt_extracting, ((st.fraction - 0.85f) / 0.15f * 100).toInt())
-                    } else {
-                        stringResource(R.string.stt_downloading, (st.fraction / 0.85f * 100).toInt())
-                    }
-                    is ModelManager.Status.Missing -> stringResource(R.string.stt_missing)
-                }
-                Text(
-                    text = sttLine,
-                    fontFamily = FontFamily.Monospace,
-                    fontSize = 12.sp,
-                    color = when (sttStatus) {
-                        is ModelManager.Status.Ready -> MonoTokens.SuccessText
-                        is ModelManager.Status.Failed -> MonoTokens.ErrorText
-                        else -> MonoTokens.Ash
-                    },
-                )
-                Spacer(Modifier.height(8.dp))
-                val useCloudUi = sttEngine == CloudStt.ENGINE_CLOUD
-                if (!useCloudUi && sttStatus !is ModelManager.Status.Ready) {
-                    VinlandButton(
-                        label = stringResource(R.string.download_stt),
-                        onClick = {
-                            val id = ModelManager.enqueueStt(context)
-                            sttDownloadId = id
-                            if (id >= 0) {
-                                sttStatus = ModelManager.Status.Downloading(0f)
-                                pollStt(id)
-                            } else if (ModelManager.isSttZipReady(context)) {
-                                sttStatus = ModelManager.Status.Downloading(1f)
-                                pollStt(-1)
-                            } else {
-                                sttStatus = ModelManager.Status.Ready
-                            }
-                        },
-                        primary = false,
-                        enabled = sttStatus !is ModelManager.Status.Downloading,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                } else {
-                    VinlandButton(
-                        label = if (transcribing) stringResource(R.string.stt_cancel)
-                        else if (jobs.isEmpty()) stringResource(R.string.stt_btn)
-                        else stringResource(R.string.stt_n, jobs.size),
-                        onClick = {
-                            if (transcribing) sttCancel.set(true) else runTranscribe()
-                        },
-                        primary = true,
-                        enabled = jobs.isNotEmpty() && !running && !splitting &&
-                            (useCloudUi || sttStatus is ModelManager.Status.Ready),
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                }
                 Spacer(Modifier.height(16.dp))
                 SectionLabel(stringResource(R.string.sec_settings))
                 Spacer(Modifier.height(8.dp))
@@ -1035,33 +746,13 @@ fun HomeScreen(lang: String, onToggleLang: () -> Unit) {
                     color = MonoTokens.Ash,
                 )
                 Spacer(Modifier.height(8.dp))
-                var workerUrl by remember { mutableStateOf(CloudStt.getUrl(context)) }
-                var workerKey by remember { mutableStateOf(CloudStt.getKey(context)) }
-                var githubPat by remember { mutableStateOf(CloudSplit.getPat(context)) }
-                VinlandField(
-                    label = stringResource(R.string.worker_url_label),
-                    value = workerUrl,
-                    onChange = {
-                        workerUrl = it
-                        CloudStt.setUrl(context, it)
-                    },
-                )
-                Spacer(Modifier.height(8.dp))
-                VinlandField(
-                    label = stringResource(R.string.worker_key_label),
-                    value = workerKey,
-                    onChange = {
-                        workerKey = it
-                        CloudStt.setKey(context, it)
-                    },
-                )
-                Spacer(Modifier.height(8.dp))
+                var githubPat by remember { mutableStateOf(GhActions.getPat(context)) }
                 VinlandField(
                     label = stringResource(R.string.github_pat_label),
                     value = githubPat,
                     onChange = {
                         githubPat = it
-                        CloudSplit.setPat(context, it)
+                        GhActions.setPat(context, it)
                     },
                 )
                 Spacer(Modifier.height(24.dp))

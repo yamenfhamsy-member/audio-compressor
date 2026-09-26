@@ -45,7 +45,7 @@
     <string name="convert_n">Convert %d files</string>
     <string name="converting">Converting %d/%d</string>
 
-    <string name="status_offline">Offline — files never leave this device</string>
+    <string name="status_offline">Compression runs offline — split and transcription use free cloud</string>
     <string name="status_added">%d file(s) added</string>
     <string name="status_done">%d/%d done — saved to Download/ThorfinAudioWorld</string>
     <string name="status_failed">All failed — try another file</string>
@@ -53,13 +53,13 @@
     <string name="status_loading">Loading preview</string>
     <string name="status_play_failed">Playback failed</string>
 
-    <string name="sec_split">05 - Vocal split</string>
-    <string name="split_desc">Splits a song into vocals and instrumental as two WAV files. Downloads the model once (~64MB), then works fully offline. Slow on phones.</string>
-    <string name="download_model">Download split model</string>
-    <string name="model_downloading">Downloading model %d%%</string>
-    <string name="model_ready">Model ready — works offline</string>
-    <string name="model_missing">Model not downloaded</string>
-    <string name="model_failed">Model download failed — check internet and retry</string>
+    <string name="sec_split">05 - Vocal split (free cloud)</string>
+    <string name="split_cloud_note">Uploads audio to GitHub Actions (free) and splits it with Demucs into vocals and instrumental. Needs a GitHub token in Settings; takes minutes.</string>
+    <string name="github_pat_label">GitHub token</string>
+    <string name="cloud_uploading">Uploading</string>
+    <string name="cloud_queued">Queued</string>
+    <string name="cloud_working">Splitting in cloud</string>
+    <string name="cloud_download">Downloading</string>
     <string name="split_btn">Split vocals</string>
     <string name="split_n">Split vocals (%d)</string>
     <string name="splitting">Splitting %d/%d</string>
@@ -67,23 +67,8 @@
     <string name="split_cancelled">Split cancelled</string>
     <string name="split_saved">Saved: %1$s and %2$s</string>
 
-    <string name="split_engine_device">On-device</string>
-    <string name="split_engine_cloud">Free cloud</string>
-    <string name="split_cloud_note">Cloud split via GitHub Actions (free): audio uploads, Demucs separates, stems download. Needs a GitHub token in Settings; takes minutes.</string>
-    <string name="github_pat_label">GitHub token (cloud split)</string>
-    <string name="cloud_uploading">Uploading</string>
-    <string name="cloud_queued">Queued</string>
-    <string name="cloud_working">Splitting in cloud</string>
-    <string name="cloud_download">Downloading</string>
-
-    <string name="sec_stt">06 - Audio to words</string>
-    <string name="stt_desc">Turns speech in the audio file into written text (Arabic) offline. Downloads the model once (~333MB), then works without internet.</string>
-    <string name="stt_downloading">Downloading speech model %d%%</string>
-    <string name="stt_extracting">Preparing model %d%%</string>
-    <string name="stt_ready">Speech model ready — works offline</string>
-    <string name="stt_missing">Speech model not downloaded</string>
-    <string name="stt_failed">Speech model download failed — check internet and retry</string>
-    <string name="download_stt">Download speech model</string>
+    <string name="sec_stt">06 - Audio to words (free cloud)</string>
+    <string name="stt_cloud_note">Uploads audio to GitHub Actions (free) and transcribes it with faster-whisper (Arabic). Needs a GitHub token in Settings.</string>
     <string name="stt_btn">Transcribe</string>
     <string name="stt_n">Transcribe (%d)</string>
     <string name="transcribing">Transcribing %d/%d</string>
@@ -95,11 +80,6 @@
     <string name="copied">Text copied</string>
     <string name="saved_txt">Saved: %1$s</string>
 
-    <string name="stt_engine_device">On-device</string>
-    <string name="stt_engine_cloud">Cloud</string>
-    <string name="cloud_needs_setup">Enter the Worker URL and key in Settings</string>
-    <string name="sec_settings">07 - Settings (cloud transcription)</string>
-    <string name="settings_note">The Worker URL and key stay on your device only. Leave empty for on-device mode.</string>
-    <string name="worker_url_label">Worker URL</string>
-    <string name="worker_key_label">Key</string>
+    <string name="sec_settings">07 - Settings</string>
+    <string name="settings_note">The token stays on your device only. Create a fine-grained token with Actions permission on the thorfin-stems and thorfin-stt-cloud repos.</string>
 </resources>

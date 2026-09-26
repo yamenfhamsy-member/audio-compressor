@@ -1,136 +1,96 @@
 package com.compressor.audio
 
 import android.content.Context
-import android.util.Base64
 import java.io.File
-import java.net.HttpURLConnection
-import java.net.URL
 import java.util.concurrent.CancellationException
-import org.json.JSONObject
 
 /**
- * Cloud speech-to-text via the user's own thorfin-stt Cloudflare Worker
- * (Whisper large-v3-turbo, multilingual incl. Arabic).
+ * Cloud speech-to-text via the thorfin-stt-cloud repo's Actions
+ * (faster-whisper base multilingual, free on public repos).
  *
- * Audio is chunked into 25 s WAV windows, POSTed as base64 JSON, and the
- * texts are concatenated. No audio stays on any server (Workers AI inference).
- *
- * Settings (SharedPreferences "settings"): worker_url, worker_key, stt_engine.
+ * Flow per file: upload original audio -> dispatch stt.yml with language ->
+ * poll -> download transcript-<jobId> artifact (transcript.txt) -> text.
+ * Needs the user's GitHub PAT. No chunking: the runner handles long files.
  */
 object CloudStt {
-    const val ENGINE_DEVICE = "device"
-    const val ENGINE_CLOUD = "cloud"
-    const val DEFAULT_URL = "https://thorfin-stt.img-api.workers.dev"
-    // Bundled fallback key so the user never types anything. The repo is
-    // public, so treat this as obscurity, not security: rotate on abuse.
-    const val DEFAULT_KEY = "bf8d306c748e0ddb8083c55ec31eaa45261bde72054fd383"
-
-    private const val CHUNK_SEC = 25
-    private const val CHUNK_SAMPLES = 16000 * CHUNK_SEC
-
-    fun getEngine(context: Context): String =
-        context.getSharedPreferences("settings", Context.MODE_PRIVATE)
-            .getString("stt_engine", ENGINE_DEVICE) ?: ENGINE_DEVICE
-
-    fun setEngine(context: Context, engine: String) {
-        context.getSharedPreferences("settings", Context.MODE_PRIVATE)
-            .edit().putString("stt_engine", engine).apply()
-    }
-
-    fun getUrl(context: Context): String =
-        context.getSharedPreferences("settings", Context.MODE_PRIVATE)
-            .getString("worker_url", DEFAULT_URL) ?: DEFAULT_URL
-
-    fun setUrl(context: Context, url: String) {
-        context.getSharedPreferences("settings", Context.MODE_PRIVATE)
-            .edit().putString("worker_url", url.trim().trimEnd('/')).apply()
-    }
-
-    fun getKey(context: Context): String {
-        val saved = context.getSharedPreferences("settings", Context.MODE_PRIVATE)
-            .getString("worker_key", null)
-        // Empty pref (fresh install or cleared) -> bundled key. Returning the
-        // default keeps cloud mode working with zero user input.
-        return saved ?: DEFAULT_KEY
-    }
-
-    fun setKey(context: Context, key: String) {
-        context.getSharedPreferences("settings", Context.MODE_PRIVATE)
-            .edit().putString("worker_key", key.trim()).apply()
-    }
+    private const val OWNER = "yamenfhamsy-member"
+    private const val REPO = "thorfin-stt-cloud"
+    private const val WORKFLOW = "stt.yml"
 
     /**
-     * Transcribe 16 kHz mono [pcm] through the cloud worker.
-     * Throws on auth/network/server errors (message is user-safe).
+     * Transcribe [file] (any audio/video; the runner decodes it).
+     * [language] defaults to Arabic. Returns the transcript text.
      */
     fun transcribe(
         context: Context,
-        pcm: ShortArray,
-        onProgress: (Float) -> Unit = {},
+        file: File,
+        language: String = "ar",
+        jobId: String,
+        onProgress: (Float, String) -> Unit = { _, _ -> },
         isCancelled: () -> Boolean = { false },
     ): String {
-        val base = getUrl(context)
-        val key = getKey(context)
-        require(base.isNotBlank()) { "worker url missing" }
-        require(key.isNotBlank()) { "api key missing" }
-        val total = pcm.size
-        val nChunks = (total + CHUNK_SAMPLES - 1) / CHUNK_SAMPLES
-        val parts = StringBuilder()
-        var offset = 0
-        var ci = 0
-        while (offset < total) {
+        val pat = GhActions.getPat(context)
+        require(pat.isNotBlank()) { "github token missing" }
+        fun check() {
             if (isCancelled()) throw CancellationException("cloud stt cancelled")
-            val n = minOf(CHUNK_SAMPLES, total - offset)
-            val wav = chunkWav(context, pcm.copyOfRange(offset, offset + n))
-            try {
-                val text = postChunk(base, key, wav)
-                if (text.isNotBlank()) {
-                    if (parts.isNotEmpty()) parts.append(' ')
-                    parts.append(text)
+        }
+        check()
+        onProgress(0.02f, "upload")
+        val url = GhActions.uploadTemp(file)
+        check()
+        onProgress(0.08f, "dispatch")
+        val since = System.currentTimeMillis()
+        GhActions.dispatch(OWNER, REPO, WORKFLOW, pat,
+            mapOf("audio_url" to url, "job_id" to jobId, "language" to language))
+        var runId = -1L
+        var waited = 0
+        while (runId < 0 && waited < 180_000) {
+            check()
+            Thread.sleep(10_000)
+            waited += 10_000
+            runId = GhActions.findRun(OWNER, REPO, WORKFLOW, pat, since)
+            onProgress(0.08f, "queued")
+        }
+        require(runId >= 0) { "run not found" }
+        while (true) {
+            check()
+            val (status, conclusion) = GhActions.runStatus(OWNER, REPO, pat, runId)
+            if (status == "completed") {
+                require(conclusion == "success") { "run $conclusion" }
+                break
+            }
+            onProgress(0.1f, "working")
+            Thread.sleep(20_000)
+        }
+        check()
+        onProgress(0.92f, "download")
+        val artifactId = GhActions.findArtifact(OWNER, REPO, pat, runId, "transcript-$jobId")
+            ?: throw IllegalStateException("artifact missing")
+        val zip = GhActions.downloadZip(OWNER, REPO, pat, artifactId)
+        val text = unzipTranscript(zip) ?: throw IllegalStateException("transcript missing")
+        runCatching { GhActions.deleteArtifact(OWNER, REPO, pat, artifactId) }
+        onProgress(1f, "done")
+        return text.trim()
+    }
+
+    private fun unzipTranscript(zip: ByteArray): String? {
+        java.util.zip.ZipInputStream(zip.inputStream().buffered()).use { zis ->
+            var entry = zis.nextEntry
+            val buf = ByteArray(64 * 1024)
+            while (entry != null) {
+                if (entry.name.substringAfterLast('/').equals("transcript.txt", true)) {
+                    val bos = java.io.ByteArrayOutputStream()
+                    while (true) {
+                        val n = zis.read(buf)
+                        if (n < 0) break
+                        bos.write(buf, 0, n)
+                    }
+                    return bos.toString(Charsets.UTF_8.name())
                 }
-            } finally {
-                runCatching { wav.delete() }
+                zis.closeEntry()
+                entry = zis.nextEntry
             }
-            offset += n
-            ci++
-            onProgress(ci.toFloat() / nChunks)
         }
-        onProgress(1f)
-        return parts.toString().trim()
-    }
-
-    private fun chunkWav(context: Context, pcm: ShortArray): File {
-        val floats = FloatArray(pcm.size) { i -> pcm[i] / 32768f }
-        val f = File.createTempFile("stt_chunk", ".wav", context.cacheDir)
-        WavWriter.write(f, floats, 16000, 1)
-        return f
-    }
-
-    private fun postChunk(baseUrl: String, key: String, wav: File): String {
-        val b64 = Base64.encodeToString(wav.readBytes(), Base64.NO_WRAP)
-        val body = JSONObject().put("audio", b64).toString()
-        val conn = (URL("$baseUrl/stt").openConnection() as HttpURLConnection).apply {
-            requestMethod = "POST"
-            setRequestProperty("Content-Type", "application/json")
-            setRequestProperty("Authorization", "Bearer $key")
-            connectTimeout = 20_000
-            readTimeout = 90_000
-            doOutput = true
-        }
-        try {
-            conn.outputStream.bufferedWriter().use { it.write(body) }
-            val code = conn.responseCode
-            val resp = try {
-                conn.inputStream.bufferedReader().readText()
-            } catch (e: Exception) {
-                conn.errorStream?.bufferedReader()?.readText() ?: ""
-            }
-            if (code == 401) throw IllegalStateException("unauthorized (check api key)")
-            if (code == 413) throw IllegalStateException("chunk too large")
-            if (code != 200) throw IllegalStateException("server $code")
-            return JSONObject(resp).optString("text", "").trim()
-        } finally {
-            conn.disconnect()
-        }
+        return null
     }
 }

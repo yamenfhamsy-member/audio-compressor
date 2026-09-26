@@ -1,5 +1,18 @@
 # Thorfin Audio
 
+Native Kotlin Android app: on-device audio compression/extraction (Opus/M4A/MP3)
+plus free cloud features powered by GitHub Actions on public repos:
+
+| Feature | Backend | Engine |
+|---|---|---|
+| Vocal split → `*_vocals.wav` + `*_instrumental.wav` | `thorfin-stems` repo Actions | Demucs htdemucs (CPU) |
+| Speech to text → `.txt` + copy | `thorfin-stt-cloud` repo Actions | faster-whisper base (Arabic) |
+
+The app uploads audio to a keyless temp host, dispatches the workflow with the
+user's own GitHub PAT (Actions read/write, stored on-device only), polls the
+run, downloads the artifact, and deletes it. No Cloudflare, no local ML models,
+APK stays tiny.
+
 Native Kotlin Android app. Extract audio from **video** or compress **audio** files.
 Three outputs, all on-device, zero native dependencies:
 
