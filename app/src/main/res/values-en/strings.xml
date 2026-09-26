@@ -8,27 +8,27 @@
     <string name="pick_audio">Pick audio</string>
     <string name="pick_video">Pick video</string>
     <string name="add_more">Add more</string>
-    <string name="source_note">Pick songs, voice notes, or a video to pull its audio. One honest note: an already-compressed file never regains its original quality — but it gets a lot smaller.</string>
+    <string name="source_note">Bring your songs, voice notes, or any video and we\'ll pull its sound out. Honestly: an already-compressed file never returns to its original — but it gets a lot smaller and still sounds lovely.</string>
 
-    <string name="sec_output">02 - What should we make?</string>
-    <string name="out_opus">Compressed</string>
-    <string name="out_opus_sub">Tiny size, lovely quality — always works</string>
-    <string name="out_mp3">Original MP3</string>
-    <string name="out_mp3_sub">A perfect copy with zero loss — only if the source is MP3</string>
+    <string name="sec_output">02 - What shall we make?</string>
+    <string name="out_opus">Small and mighty</string>
+    <string name="out_opus_sub">Tiny size, beautiful sound — always works</string>
+    <string name="out_mp3">MP3 as it is</string>
+    <string name="out_mp3_sub">A perfect copy, not a single note lost — only if the source is MP3</string>
     <string name="out_m4a">M4A</string>
-    <string name="out_m4a_sub">Plays on every device out there</string>
+    <string name="out_m4a_sub">Everybody\'s friend — plays on any device you can think of</string>
     <string name="mp3_compat">%1$d of %2$d files are MP3 and ready for direct copy</string>
 
     <string name="sec_preset">03 - Quality (Opus and M4A)</string>
     <string name="preset_music">Music</string>
-    <string name="preset_music_sub">Best quality — Opus 96k stereo</string>
+    <string name="preset_music_sub">Our finest — Opus 96k stereo</string>
     <string name="preset_balanced">Balanced</string>
-    <string name="preset_balanced_sub">The sweet spot — Opus 64k stereo</string>
+    <string name="preset_balanced_sub">Our favourite — lovely size, gorgeous sound</string>
     <string name="preset_voice">Voice</string>
-    <string name="preset_voice_sub">For speech and podcasts — Opus 24k mono</string>
+    <string name="preset_voice_sub">Made for speech and podcasts — Opus 24k mono</string>
 
     <string name="sec_files">04 - Your files</string>
-    <string name="empty">Nothing here yet — pick your first file above</string>
+    <string name="empty">Empty here… pick your first file above and let\'s go</string>
     <string name="badge_video">Video</string>
     <string name="badge_audio">Audio</string>
     <string name="play">Listen</string>
@@ -36,50 +36,46 @@
 
     <string name="st_queued">Waiting its turn</string>
     <string name="st_working">Working on it</string>
-    <string name="st_done">Done −%d%% smaller</string>
-    <string name="st_error">Failed</string>
-    <string name="skip_not_mp3">Skipped — not really an MP3</string>
-    <string name="no_audio">No sound in this file</string>
+    <string name="st_done">Done! −%d%% smaller</string>
+    <string name="st_error">Didn\'t make it</string>
+    <string name="skip_not_mp3">Skipped — that\'s not a real MP3</string>
+    <string name="no_audio">There\'s no sound in this file at all</string>
 
     <string name="convert">Convert</string>
     <string name="convert_n">Convert %d files</string>
-    <string name="converting">Converting %d/%d… almost there</string>
+    <string name="converting">Converting %d/%d… one moment and we\'re done</string>
 
-    <string name="status_offline">Compression works fully offline — split and transcription use the free cloud</string>
-    <string name="status_added">Lovely! %d file(s) added</string>
-    <string name="status_done">All done! %d/%d waiting in Download/ThorfinAudioWorld</string>
-    <string name="status_failed">Didn\'t work this time — try another file</string>
-    <string name="status_playing">Playing your preview</string>
-    <string name="status_loading">Getting the preview ready…</string>
+    <string name="status_offline">Compression works even offline — splitting and transcription are on us, free</string>
+    <string name="status_added">Lovely! We\'ve got %d file(s) now</string>
+    <string name="status_done">Everything\'s ready! %d/%d waiting for you in Download/ThorfinAudioWorld</string>
+    <string name="status_failed">Didn\'t work out this time — try another file</string>
+    <string name="status_playing">Have a listen</string>
+    <string name="status_loading">Getting your preview ready…</string>
     <string name="status_play_failed">Couldn\'t play that preview</string>
 
-    <string name="sec_split">05 - Vocal split (free cloud)</string>
-    <string name="split_cloud_note">We upload your audio, split it into vocals and instrumental, and bring both files back. The first run takes a few minutes — sit tight.</string>
-    <string name="github_pat_label">GitHub token</string>
-    <string name="cloud_uploading">Uploading</string>
-    <string name="cloud_queued">In the queue…</string>
-    <string name="cloud_working">Splitting in the cloud…</string>
-    <string name="cloud_download">Bringing the result down</string>
+    <string name="sec_split">05 - Split the vocals out</string>
+    <string name="split_cloud_note">Send the track and relax — we\'ll bring it back as two files: clean vocals on their own and the music on its own. The first run takes a few minutes, then you\'ll get used to us.</string>
+    <string name="cloud_uploading">Uploading your file</string>
+    <string name="cloud_queued">Got it! Waiting our turn…</string>
+    <string name="cloud_working">Splitting away… stay close</string>
+    <string name="cloud_download">Bringing your result back</string>
     <string name="split_btn">Split vocals</string>
     <string name="split_n">Split vocals (%d)</string>
     <string name="splitting">Splitting %d/%d… good things take time</string>
-    <string name="split_cancel">Cancel</string>
-    <string name="split_cancelled">Cancelled, as you asked</string>
-    <string name="split_saved">Here they are: %1$s and %2$s</string>
+    <string name="split_cancel">That\'s enough</string>
+    <string name="split_cancelled">As you wish — stopped</string>
+    <string name="split_saved">They arrived safely! %1$s and %2$s</string>
 
-    <string name="sec_stt">06 - Audio to words (free cloud)</string>
-    <string name="stt_cloud_note">We upload your audio and bring the words back written in Arabic. A few minutes and they\'re yours.</string>
+    <string name="sec_stt">06 - Turn speech into words</string>
+    <string name="stt_cloud_note">Got a recording you need in writing? Send it over and we\'ll return every word said, in Arabic. A few minutes and the words are in your hands.</string>
     <string name="stt_btn">Transcribe</string>
     <string name="stt_n">Transcribe (%d)</string>
     <string name="transcribing">Listening and writing %d/%d…</string>
-    <string name="stt_cancel">Cancel</string>
-    <string name="stt_cancelled">Cancelled, as you asked</string>
-    <string name="stt_empty">Couldn\'t hear clear speech in this one</string>
+    <string name="stt_cancel">That\'s enough</string>
+    <string name="stt_cancelled">As you wish — stopped</string>
+    <string name="stt_empty">Listened to the whole thing and found no clear speech</string>
     <string name="save_txt">Save TXT</string>
     <string name="copy_text">Copy</string>
     <string name="copied">Copied! Paste it anywhere you like</string>
-    <string name="saved_txt">Saved: %1$s</string>
-
-    <string name="sec_settings">07 - Settings</string>
-    <string name="settings_note">Your token never leaves this device. Need one? Create a fine-grained token with Actions permission on the thorfin-stems and thorfin-stt-cloud repos.</string>
+    <string name="saved_txt">Saved happily: %1$s</string>
 </resources>

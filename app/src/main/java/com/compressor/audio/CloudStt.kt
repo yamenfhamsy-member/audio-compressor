@@ -5,17 +5,14 @@ import java.io.File
 import java.util.concurrent.CancellationException
 
 /**
- * Cloud speech-to-text via the thorfin-stt-cloud repo's Actions
- * (faster-whisper base multilingual, free on public repos).
+ * Cloud speech-to-text via free GitHub Actions runners (faster-whisper),
+ * driven by our always-on Cloudflare relay.
  *
- * Flow per file: upload original audio -> dispatch stt.yml with language ->
- * poll -> download transcript-<jobId> artifact (transcript.txt) -> text.
- * Needs the user's GitHub PAT. No chunking: the runner handles long files.
+ * Flow per file: upload original audio -> relay dispatch with language ->
+ * poll -> download transcript artifact -> text. No chunking: the runner
+ * handles long files. The app holds no keys — the relay owns the token.
  */
 object CloudStt {
-    private const val OWNER = "yamenfhamsy-member"
-    private const val REPO = "thorfin-stt-cloud"
-    private const val WORKFLOW = "stt.yml"
 
     /**
      * Transcribe [file] (any audio/video; the runner decodes it).
@@ -29,34 +26,28 @@ object CloudStt {
         onProgress: (Float, String) -> Unit = { _, _ -> },
         isCancelled: () -> Boolean = { false },
     ): String {
-        val pat = GhActions.getPat(context)
-        require(pat.isNotBlank()) { "github token missing" }
-        fun check() {
-            if (isCancelled()) throw CancellationException("cloud stt cancelled")
-        }
         check()
         onProgress(0.02f, "upload")
         val url = GhActions.uploadTemp(file)
         check()
         onProgress(0.08f, "dispatch")
-        val since = System.currentTimeMillis()
-        GhActions.dispatch(OWNER, REPO, WORKFLOW, pat,
-            mapOf("audio_url" to url, "job_id" to jobId, "language" to language))
+        val since = GhActions.dispatch("stt", url, jobId, mapOf("language" to language))
         var runId = -1L
         var waited = 0
         while (runId < 0 && waited < 180_000) {
             check()
             Thread.sleep(10_000)
             waited += 10_000
-            runId = GhActions.findRun(OWNER, REPO, WORKFLOW, pat, since)
+            runId = GhActions.pollRun("stt", since)?.runId ?: -1L
             onProgress(0.08f, "queued")
         }
         require(runId >= 0) { "run not found" }
         while (true) {
             check()
-            val (status, conclusion) = GhActions.runStatus(OWNER, REPO, pat, runId)
-            if (status == "completed") {
-                require(conclusion == "success") { "run $conclusion" }
+            val run = GhActions.pollRun("stt", since)
+                ?: throw IllegalStateException("run lost")
+            if (run.status == "completed") {
+                require(run.conclusion == "success") { "run ${run.conclusion}" }
                 break
             }
             onProgress(0.1f, "working")
@@ -64,11 +55,9 @@ object CloudStt {
         }
         check()
         onProgress(0.92f, "download")
-        val artifactId = GhActions.findArtifact(OWNER, REPO, pat, runId, "transcript-$jobId")
+        val zip = GhActions.fetchArtifact("stt", runId, jobId)
             ?: throw IllegalStateException("artifact missing")
-        val zip = GhActions.downloadZip(OWNER, REPO, pat, artifactId)
         val text = unzipTranscript(zip) ?: throw IllegalStateException("transcript missing")
-        runCatching { GhActions.deleteArtifact(OWNER, REPO, pat, artifactId) }
         onProgress(1f, "done")
         return text.trim()
     }

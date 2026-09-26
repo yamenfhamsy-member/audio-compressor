@@ -43,7 +43,6 @@ import androidx.compose.ui.unit.sp
 import com.compressor.audio.AudioItem
 import com.compressor.audio.CloudSplit
 import com.compressor.audio.CloudStt
-import com.compressor.audio.GhActions
 import com.compressor.audio.copyUriToCache
 import com.compressor.audio.OutputMode
 import com.compressor.audio.Preset
@@ -321,7 +320,6 @@ fun HomeScreen(lang: String, onToggleLang: () -> Unit) {
 
     fun runSplitCloud() {
         if (splitting || running || transcribing || jobs.isEmpty()) return
-        if (GhActions.getPat(context).isBlank()) return
         val snapshot = jobs.toList()
         val cancelledMsg = context.getString(R.string.split_cancelled)
         val noAudioMsg = context.getString(R.string.no_audio)
@@ -420,7 +418,6 @@ fun HomeScreen(lang: String, onToggleLang: () -> Unit) {
 
     fun runTranscribe() {
         if (transcribing || running || splitting || jobs.isEmpty()) return
-        if (GhActions.getPat(context).isBlank()) return
         val snapshot = jobs.toList()
         val cancelledMsg = context.getString(R.string.stt_cancelled)
         val noAudioMsg = context.getString(R.string.no_audio)
@@ -710,8 +707,7 @@ fun HomeScreen(lang: String, onToggleLang: () -> Unit) {
                         if (splitting) splitCancel.set(true) else runSplitCloud()
                     },
                     primary = true,
-                    enabled = jobs.isNotEmpty() && !running && !transcribing &&
-                        GhActions.getPat(context).isNotBlank(),
+                    enabled = jobs.isNotEmpty() && !running && !transcribing,
                     modifier = Modifier.fillMaxWidth(),
                 )
                 Spacer(Modifier.height(16.dp))
@@ -732,28 +728,8 @@ fun HomeScreen(lang: String, onToggleLang: () -> Unit) {
                         if (transcribing) sttCancel.set(true) else runTranscribe()
                     },
                     primary = true,
-                    enabled = jobs.isNotEmpty() && !running && !splitting &&
-                        GhActions.getPat(context).isNotBlank(),
+                    enabled = jobs.isNotEmpty() && !running && !splitting,
                     modifier = Modifier.fillMaxWidth(),
-                )
-                Spacer(Modifier.height(16.dp))
-                SectionLabel(stringResource(R.string.sec_settings))
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    text = stringResource(R.string.settings_note),
-                    fontFamily = FontFamily.SansSerif,
-                    fontSize = 12.sp,
-                    color = MonoTokens.Ash,
-                )
-                Spacer(Modifier.height(8.dp))
-                var githubPat by remember { mutableStateOf(GhActions.getPat(context)) }
-                VinlandField(
-                    label = stringResource(R.string.github_pat_label),
-                    value = githubPat,
-                    onChange = {
-                        githubPat = it
-                        GhActions.setPat(context, it)
-                    },
                 )
                 Spacer(Modifier.height(24.dp))
             }
@@ -904,37 +880,3 @@ private fun MiniButton(label: String, onClick: () -> Unit, modifier: Modifier = 
     }
 }
 
-/** Sharp settings input: steel fill, 1px blade border, radius 0. */
-@Composable
-private fun VinlandField(label: String, value: String, onChange: (String) -> Unit) {
-    Column(Modifier.fillMaxWidth()) {
-        Text(
-            text = label,
-            fontFamily = FontFamily.Monospace,
-            fontSize = 11.sp,
-            color = MonoTokens.Ash,
-        )
-        Spacer(Modifier.height(4.dp))
-        androidx.compose.material3.TextField(
-            value = value,
-            onValueChange = onChange,
-            singleLine = true,
-            textStyle = androidx.compose.ui.text.TextStyle(
-                fontFamily = FontFamily.Monospace,
-                fontSize = 13.sp,
-                color = MonoTokens.Bone,
-            ),
-            shape = RoundedCornerShape(0.dp),
-            colors = androidx.compose.material3.TextFieldDefaults.colors(
-                focusedContainerColor = MonoTokens.Steel,
-                unfocusedContainerColor = MonoTokens.Iron,
-                focusedIndicatorColor = MonoTokens.BorderSharp,
-                unfocusedIndicatorColor = MonoTokens.BorderBlade,
-                cursorColor = MonoTokens.Bone,
-            ),
-            modifier = Modifier
-                .fillMaxWidth()
-                .border(1.dp, MonoTokens.BorderBlade, RoundedCornerShape(0.dp)),
-        )
-    }
-}

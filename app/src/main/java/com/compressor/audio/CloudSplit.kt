@@ -5,15 +5,12 @@ import java.io.File
 import java.util.concurrent.CancellationException
 
 /**
- * Cloud stem separation via the thorfin-stems repo's Actions (Demucs,
- * free on public repos). Flow per file: upload -> dispatch -> poll ->
- * download stems zip -> unzip -> publish. Needs the user's GitHub PAT.
+ * Cloud stem separation via free GitHub Actions runners (Demucs),
+ * driven by our always-on Cloudflare relay. Flow per file: upload ->
+ * relay dispatch -> poll -> download stems zip -> unzip -> publish.
+ * The app holds no keys at all — the relay owns the GitHub token.
  */
 object CloudSplit {
-    private const val OWNER = "yamenfhamsy-member"
-    private const val REPO = "thorfin-stems"
-    private const val WORKFLOW = "separate.yml"
-
     data class CloudStems(val vocals: File, val instrumental: File)
 
     /**
@@ -28,34 +25,28 @@ object CloudSplit {
         onProgress: (Float, String) -> Unit = { _, _ -> },
         isCancelled: () -> Boolean = { false },
     ): CloudStems {
-        val pat = GhActions.getPat(context)
-        require(pat.isNotBlank()) { "github token missing" }
-        fun check() {
-            if (isCancelled()) throw CancellationException("cloud split cancelled")
-        }
         check()
         onProgress(0.02f, "upload")
         val url = GhActions.uploadTemp(file)
         check()
         onProgress(0.08f, "dispatch")
-        val since = System.currentTimeMillis()
-        GhActions.dispatch(OWNER, REPO, WORKFLOW, pat,
-            mapOf("audio_url" to url, "job_id" to jobId, "ext" to ext))
+        val since = GhActions.dispatch("stems", url, jobId, mapOf("ext" to ext))
         var runId = -1L
         var waited = 0
         while (runId < 0 && waited < 180_000) {
             check()
             Thread.sleep(10_000)
             waited += 10_000
-            runId = GhActions.findRun(OWNER, REPO, WORKFLOW, pat, since)
+            runId = GhActions.pollRun("stems", since)?.runId ?: -1L
             onProgress(0.08f, "queued")
         }
         require(runId >= 0) { "run not found" }
         while (true) {
             check()
-            val (status, conclusion) = GhActions.runStatus(OWNER, REPO, pat, runId)
-            if (status == "completed") {
-                require(conclusion == "success") { "run $conclusion" }
+            val run = GhActions.pollRun("stems", since)
+                ?: throw IllegalStateException("run lost")
+            if (run.status == "completed") {
+                require(run.conclusion == "success") { "run ${run.conclusion}" }
                 break
             }
             onProgress(0.1f, "working")
@@ -63,11 +54,9 @@ object CloudSplit {
         }
         check()
         onProgress(0.92f, "download")
-        val artifactId = GhActions.findArtifact(OWNER, REPO, pat, runId, "stems-$jobId")
+        val zip = GhActions.fetchArtifact("stems", runId, jobId)
             ?: throw IllegalStateException("artifact missing")
-        val zip = GhActions.downloadZip(OWNER, REPO, pat, artifactId)
         val (vocals, instrumental) = unzipStems(context, zip, jobId)
-        runCatching { GhActions.deleteArtifact(OWNER, REPO, pat, artifactId) }
         onProgress(1f, "done")
         return CloudStems(vocals, instrumental)
     }

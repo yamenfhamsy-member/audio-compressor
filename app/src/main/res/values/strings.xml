@@ -4,82 +4,78 @@
     <string name="title">Thorfin Audio</string>
     <string name="lang_toggle">EN</string>
 
-    <string name="sec_source">01 - اختر ملفاتك</string>
+    <string name="sec_source">01 - هات ملفاتك</string>
     <string name="pick_audio">اختار صوت</string>
     <string name="pick_video">اختار فيديو</string>
     <string name="add_more">ضيف كمان</string>
-    <string name="source_note">فيك تختار أغاني أو تسجيلات أو فيديو لنسحب صوته. ملاحظة صغيرة: الملف المضغوط أصلاً ما بيرجع لجودته الأولى، بس حجمه بيصغر كتير.</string>
+    <string name="source_note">جيب أغانيك أو تسجيلاتك أو أي فيديو ومنسحبلك صوته. وبكل صراحة: الملف المضغوط أصلاً ما بيرجع لأصله، بس حجمه بيصغر كتير وبيضل حلو.</string>
 
-    <string name="sec_output">02 - شو بدك الناتج؟</string>
-    <string name="out_opus">مضغوط</string>
-    <string name="out_opus_sub">حجم صغير وجودة منيحة — بيشتغل دايماً</string>
-    <string name="out_mp3">MP3 أصلي</string>
-    <string name="out_mp3_sub">نسخة طبق الأصل بدون أي ضياع — بس إذا المصدر MP3</string>
+    <string name="sec_output">02 - شو نعمل فيهن؟</string>
+    <string name="out_opus">مضغوط وخفيف</string>
+    <string name="out_opus_sub">حجم صغير وصوت بيطيّر العقل — بيشتغل دايماً</string>
+    <string name="out_mp3">MP3 مثل ما هو</string>
+    <string name="out_mp3_sub">نسخة طبق الأصل بدون ما نخسر ولا نغمة — بس إذا المصدر MP3</string>
     <string name="out_m4a">M4A</string>
-    <string name="out_m4a_sub">بيشتغل على كل الأجهزة والمشغلات</string>
+    <string name="out_m4a_sub">صديق الكل — بيشتغل على أي جهاز بتخطر عبالك</string>
     <string name="mp3_compat">%1$d من %2$d ملفاتها MP3 وجاهزة للنسخ المباشر</string>
 
     <string name="sec_preset">03 - الجودة (للمضغوط و M4A)</string>
     <string name="preset_music">موسيقى</string>
-    <string name="preset_music_sub">أعلى جودة — Opus ‏96k ستيريو</string>
+    <string name="preset_music_sub">أفخم شي عنا — Opus ‏96k ستيريو</string>
     <string name="preset_balanced">متوازن</string>
-    <string name="preset_balanced_sub">حل وسط ممتاز — Opus ‏64k ستيريو</string>
+    <string name="preset_balanced_sub">اختيارنا المفضل — حجم حلو وجودة بتجنن</string>
     <string name="preset_voice">صوتي</string>
-    <string name="preset_voice_sub">للكلام والبودكاست — Opus ‏24k أحادي</string>
+    <string name="preset_voice_sub">مصمم للكلام والبودكاست — Opus ‏24k أحادي</string>
 
     <string name="sec_files">04 - ملفاتك</string>
-    <string name="empty">لسا ما اخترت شي — بلّش من فوق</string>
+    <string name="empty">فاضي هون… اختار أول ملف من فوق وبلّش</string>
     <string name="badge_video">فيديو</string>
     <string name="badge_audio">صوت</string>
     <string name="play">اسمع</string>
     <string name="stop">وقّف</string>
 
     <string name="st_queued">ناطرة دورها</string>
-    <string name="st_working">شغّالة</string>
-    <string name="st_done">خلصت −%d%% من الحجم</string>
-    <string name="st_error">تعذّر</string>
-    <string name="skip_not_mp3">تخطيناه — صوته مو MP3</string>
-    <string name="no_audio">هالملف ما فيه صوت</string>
+    <string name="st_working">عم نشتغل عليها</string>
+    <string name="st_done">خلصت! صغرت −%d%%</string>
+    <string name="st_error">ما زبطت</string>
+    <string name="skip_not_mp3">تخطيناه — هاد مو MP3 حقيقي</string>
+    <string name="no_audio">هالملف ما فيه صوت أبداً</string>
 
     <string name="convert">حوّل</string>
     <string name="convert_n">حوّل %d ملفات</string>
-    <string name="converting">عم نحوّل %d/%d … شوي وبنخلص</string>
+    <string name="converting">عم نحوّل %d/%d … لحظة ومنخلص</string>
 
-    <string name="status_offline">الضغط والاستخراج بيشتغلوا بدون إنترنت — الفصل والنسخ عبر سحابة مجانية</string>
-    <string name="status_added">تمام! وصلت %d ملفات</string>
-    <string name="status_done">خلصنا! %d/%d صاروا بـ Download/ThorfinAudioWorld</string>
-    <string name="status_failed">ما زبطت هالمرة — جرّب ملف تاني</string>
-    <string name="status_playing">عم تسمع المعاينة</string>
-    <string name="status_loading">عم نجهّز المعاينة…</string>
-    <string name="status_play_failed">ما قدرنا نشغّل المعاينة</string>
+    <string name="status_offline">الضغط والاستخراج شغالين حتى بدون إنترنت — والفصل والنسخ علينا، مجاناً</string>
+    <string name="status_added">يا سلام! صار عنا %d ملفات</string>
+    <string name="status_done">خلصنا كل شي! %d/%d ناطرينك بـ Download/ThorfinAudioWorld</string>
+    <string name="status_failed">هالمرة ما مشي الحال — جرّب ملف تاني</string>
+    <string name="status_playing">تفضل اسمع</string>
+    <string name="status_loading">عم نجهّزلك المعاينة…</string>
+    <string name="status_play_failed">ما قدرنا نشغّل هالمعاينة</string>
 
-    <string name="sec_split">05 - افصل الغناء (سحابة مجانية)</string>
-    <string name="split_cloud_note">منرفع الصوت، ومنفصله لـ غناء وموسيقى، ومنرجّعلك ياهن ملفين. أول مرة بتاخد شوية وقت، خليك مرتاح.</string>
-    <string name="github_pat_label">توكن GitHub</string>
-    <string name="cloud_uploading">عم نرفع</string>
-    <string name="cloud_queued">بالدور…</string>
-    <string name="cloud_working">عم نفصل سحابياً…</string>
-    <string name="cloud_download">عم نحمّل النتيجة</string>
+    <string name="sec_split">05 - افصل الغناء عن الموسيقى</string>
+    <string name="split_cloud_note">ارفع الصوت وارتاح — منرجّعلك ياه ملفين: صوت نقي لحالو وموسيقى لحالها. أول مرة بتاخد كم دقيقة، وبعدين بتتعود علينا.</string>
+    <string name="cloud_uploading">عم نرفع ملفك</string>
+    <string name="cloud_queued">وصلت! ناطرين دورنا…</string>
+    <string name="cloud_working">شغالين عالفصل… خليك قريب</string>
+    <string name="cloud_download">عم نجيبلك النتيجة</string>
     <string name="split_btn">افصل الغناء</string>
     <string name="split_n">افصل الغناء (%d)</string>
-    <string name="splitting">عم نفصل %d/%d … بتاخد وقت فلا تستعجل</string>
-    <string name="split_cancel">إلغاء</string>
-    <string name="split_cancelled">أُلغي بطلبك</string>
-    <string name="split_saved">وصلوا! %1$s و %2$s</string>
+    <string name="splitting">عم نفصل %d/%d … الشغلة الحلوة بدها وقت</string>
+    <string name="split_cancel">خلص بكفي</string>
+    <string name="split_cancelled">تكرم — وقفنا متل ما طلبت</string>
+    <string name="split_saved">وصلوا بالسلامة! %1$s و %2$s</string>
 
-    <string name="sec_stt">06 - الصوت ل كلمات (سحابة مجانية)</string>
-    <string name="stt_cloud_note">منرفع الصوت ومنرجّعلك الكلام مكتوباً بالعربي. دقائق وبتكون الكلمات عندك.</string>
+    <string name="sec_stt">06 - حوّل الحكي لكلمات</string>
+    <string name="stt_cloud_note">عندك تسجيل وبدك ياه مكتوب؟ ابعتلنا ياه ومنرجّعلك كل كلمة انقالت بالعربي. كم دقيقة وبتكون الكلمات بين إيديك.</string>
     <string name="stt_btn">حوّل لكلمات</string>
     <string name="stt_n">حوّل لكلمات (%d)</string>
     <string name="transcribing">عم نسمع ونكتب %d/%d …</string>
-    <string name="stt_cancel">إلغاء</string>
-    <string name="stt_cancelled">أُلغي بطلبك</string>
-    <string name="stt_empty">ما سمعنا كلام واضح بهالملف</string>
+    <string name="stt_cancel">خلص بكفي</string>
+    <string name="stt_cancelled">تكرم — وقفنا متل ما طلبت</string>
+    <string name="stt_empty">سمعنا الملف كلو وما لقينا حكي واضح فيه</string>
     <string name="save_txt">حفظ TXT</string>
     <string name="copy_text">نسخ</string>
-    <string name="copied">نُسخ! الصقه وين ما بدك</string>
-    <string name="saved_txt">انحفظ: %1$s</string>
-
-    <string name="sec_settings">07 - الإعدادات</string>
-    <string name="settings_note">التوكن محفوظ بجهازك بس وما بيطلع لبرا. بدك واحد؟ أنشئ Fine-grained token بصلاحية Actions على ريبو thorfin-stems و thorfin-stt-cloud.</string>
+    <string name="copied">نُسخ! صار فيك تلصقه وين ما بدك</string>
+    <string name="saved_txt">انحفظ بنجاح: %1$s</string>
 </resources>

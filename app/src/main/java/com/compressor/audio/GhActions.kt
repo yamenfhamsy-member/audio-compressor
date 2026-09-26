@@ -1,49 +1,26 @@
 package com.compressor.audio
 
-import android.content.Context
-import java.io.ByteArrayOutputStream
 import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
-import org.json.JSONArray
+import java.net.URLEncoder
 import org.json.JSONObject
 
 /**
- * Shared GitHub Actions backend client (free compute on public repos).
+ * Backend client for Thorfin Audio's cloud features.
  *
- * Uploads go to keyless temp hosts (litterbox 72h, uguu.se fallback);
- * workflow control uses the user's own fine-grained PAT (Actions read/write),
- * stored in SharedPreferences "settings" under "github_pat".
+ * Heavy work runs on free GitHub Actions runners, but the app never talks
+ * to GitHub directly: it talks to our always-on Cloudflare relay, which
+ * holds the GitHub token as a server-side secret. No keys live in the app,
+ * so there is nothing to type, hide, or leak.
+ *
+ * Uploads still go straight from the phone to keyless temp hosts
+ * (litterbox 72h, uguu.se fallback) — the relay only passes small JSON.
  */
 object GhActions {
-    private const val API = "https://api.github.com"
+    private const val RELAY = "https://thorfin-relay.img-api.workers.dev"
 
-    // Bundled PAT (XOR + Base64, split in two): the app works with zero input.
-    // The repo is public, so this is obscurity, not security — rotate on abuse.
-    // A manually saved key in settings always overrides the bundled one.
-    private const val K1 = "PVsPQ9Q65ls0ZgpEmjv8LiJ1TVSI"
-    private const val K2 = "MfAhFlETJNZD4B84ZE5Pl0fDFw=="
-    private const val MX = "5a337f1ce209b46d"
-
-    private fun bundledPat(): String {
-        val enc = android.util.Base64.decode(K1 + K2, android.util.Base64.DEFAULT)
-        val mask = MX.chunked(2).map { it.toInt(16).toByte() }
-        val out = ByteArray(enc.size) { i ->
-            (enc[i].toInt() xor mask[i % mask.size].toInt()).toByte()
-        }
-        return String(out, Charsets.UTF_8)
-    }
-
-    fun getPat(context: Context): String {
-        val saved = context.getSharedPreferences("settings", Context.MODE_PRIVATE)
-            .getString("github_pat", null)
-        return saved ?: runCatching { bundledPat() }.getOrDefault("")
-    }
-
-    fun setPat(context: Context, pat: String) {
-        context.getSharedPreferences("settings", Context.MODE_PRIVATE)
-            .edit().putString("github_pat", pat.trim()).apply()
-    }
+    data class RelayRun(val runId: Long, val status: String, val conclusion: String?)
 
     /** Upload [file] keylessly; returns a public URL valid for days. */
     fun uploadTemp(file: File): String {
@@ -102,21 +79,16 @@ object GhActions {
         return url
     }
 
-    private fun gh(path: String, pat: String, method: String = "GET", body: String? = null): Pair<Int, String> {
-        val conn = (URL("$API$path").openConnection() as HttpURLConnection).apply {
-            requestMethod = method
-            setRequestProperty("Accept", "application/vnd.github+json")
-            setRequestProperty("Authorization", "Bearer $pat")
-            setRequestProperty("X-GitHub-Api-Version", "2022-11-28")
+    private fun relayPost(path: String, body: JSONObject): Pair<Int, String> {
+        val conn = (URL("$RELAY$path").openConnection() as HttpURLConnection).apply {
+            requestMethod = "POST"
+            setRequestProperty("Content-Type", "application/json")
             connectTimeout = 20_000
-            readTimeout = 30_000
-            if (body != null) {
-                setRequestProperty("Content-Type", "application/json")
-                doOutput = true
-            }
+            readTimeout = 60_000
+            doOutput = true
         }
         try {
-            if (body != null) conn.outputStream.bufferedWriter().use { it.write(body) }
+            conn.outputStream.bufferedWriter().use { it.write(body.toString()) }
             val code = conn.responseCode
             val resp = try {
                 conn.inputStream.bufferedReader().readText()
@@ -129,73 +101,66 @@ object GhActions {
         }
     }
 
-    fun dispatch(owner: String, repo: String, workflow: String, pat: String, inputs: Map<String, String>) {
-        val jo = JSONObject()
-        for ((k, v) in inputs) jo.put(k, v)
-        val body = JSONObject().put("ref", "main").put("inputs", jo).toString()
-        val (code, _) = gh("/repos/$owner/$repo/actions/workflows/$workflow/dispatches", pat, "POST", body)
-        require(code == 204) {
-            if (code == 401 || code == 403 || code == 404) "unauthorized (check token)" else "dispatch $code"
-        }
-    }
-
-    /** Newest run of [workflow] created at/after [sinceMs], or -1. */
-    fun findRun(owner: String, repo: String, workflow: String, pat: String, sinceMs: Long): Long {
-        val (code, resp) = gh(
-            "/repos/$owner/$repo/actions/workflows/$workflow/runs?per_page=10", pat,
-        )
-        require(code == 200) { "runs api $code" }
-        val runs = JSONObject(resp).optJSONArray("workflow_runs") ?: JSONArray()
-        for (i in 0 until runs.length()) {
-            val r = runs.getJSONObject(i)
-            if (r.optString("created_at", "") >= isoOf(sinceMs)) return r.getLong("id")
-        }
-        return -1
-    }
-
-    fun runStatus(owner: String, repo: String, pat: String, runId: Long): Pair<String, String?> {
-        val (code, resp) = gh("/repos/$owner/$repo/actions/runs/$runId", pat)
-        require(code == 200) { "run api $code" }
-        val o = JSONObject(resp)
-        return Pair(o.optString("status", ""), o.optString("conclusion", "").ifBlank { null })
-    }
-
-    fun findArtifact(owner: String, repo: String, pat: String, runId: Long, name: String): Long? {
-        val (code, resp) = gh("/repos/$owner/$repo/actions/runs/$runId/artifacts?per_page=20", pat)
-        require(code == 200) { "artifacts api $code" }
-        val list = JSONObject(resp).optJSONArray("artifacts") ?: JSONArray()
-        for (i in 0 until list.length()) {
-            val a = list.getJSONObject(i)
-            if (a.optString("name") == name && !a.optBoolean("expired")) return a.getLong("id")
-        }
-        return null
-    }
-
-    fun downloadZip(owner: String, repo: String, pat: String, artifactId: Long): ByteArray {
-        val conn = (URL("$API/repos/$owner/$repo/actions/artifacts/$artifactId/zip").openConnection() as HttpURLConnection).apply {
-            setRequestProperty("Accept", "application/vnd.github+json")
-            setRequestProperty("Authorization", "Bearer $pat")
-            setRequestProperty("X-GitHub-Api-Version", "2022-11-28")
+    private fun relayGetBytes(path: String): Pair<Int, ByteArray> {
+        val conn = (URL("$RELAY$path").openConnection() as HttpURLConnection).apply {
             connectTimeout = 20_000
             readTimeout = 300_000
         }
         try {
-            require(conn.responseCode == 200) { "download ${conn.responseCode}" }
-            val bos = ByteArrayOutputStream()
-            conn.inputStream.buffered().use { it.copyTo(bos) }
-            return bos.toByteArray()
+            val code = conn.responseCode
+            val bytes = try {
+                conn.inputStream.buffered().readBytes()
+            } catch (e: Exception) {
+                conn.errorStream?.buffered()?.readBytes() ?: ByteArray(0)
+            }
+            return Pair(code, bytes)
         } finally {
             conn.disconnect()
         }
     }
 
-    fun deleteArtifact(owner: String, repo: String, pat: String, artifactId: Long) {
-        gh("/repos/$owner/$repo/actions/artifacts/$artifactId", pat, "DELETE")
+    private fun enc(s: String): String = URLEncoder.encode(s, "UTF-8")
+
+    /**
+     * Ask the relay to start a cloud job ([target] is "stems" or "stt").
+     * Returns the server-side marker used for polling.
+     */
+    fun dispatch(target: String, audioUrl: String, jobId: String, extra: Map<String, String> = emptyMap()): String {
+        val jo = JSONObject()
+            .put("target", target)
+            .put("audio_url", audioUrl)
+            .put("job_id", jobId)
+        for ((k, v) in extra) jo.put(k, v)
+        val (code, resp) = relayPost("/api/dispatch", jo)
+        require(code == 200) { "cloud busy ($code)" }
+        return JSONObject(resp).optString("since", "").also {
+            require(it.isNotBlank()) { "cloud busy" }
+        }
     }
 
-    fun isoOf(ms: Long): String {
-        val sdf = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", java.util.Locale.US)
-        sdf.timeZone = java.util.TimeZone.getTimeZone("UTC")
-        return sdf.format(java.util.Date(ms))
+    /** Newest matching run, or null while it is still queuing. */
+    fun pollRun(target: String, since: String): RelayRun? {
+        val (code, bytes) = relayGetBytes("/api/run?target=${enc(target)}&since=${enc(since)}")
+        require(code == 200) { "cloud busy ($code)" }
+        val o = JSONObject(bytes.toString(Charsets.UTF_8))
+        if (!o.optBoolean("found")) return null
+        return RelayRun(
+            o.getLong("runId"),
+            o.optString("status", ""),
+            o.optString("conclusion", "").ifBlank { null },
+        )
+    }
+
+    /**
+     * Result zip bytes, or null while not ready yet. The relay deletes the
+     * file server-side right after serving it, so nothing lingers.
+     */
+    fun fetchArtifact(target: String, runId: Long, name: String): ByteArray? {
+        val (code, bytes) = relayGetBytes(
+            "/api/artifact?target=${enc(target)}&run_id=$runId&name=${enc(name)}",
+        )
+        if (code == 404) return null
+        require(code == 200) { "cloud busy ($code)" }
+        return bytes
     }
 }
