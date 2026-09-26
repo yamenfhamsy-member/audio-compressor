@@ -17,7 +17,26 @@ data class AudioItem(
     val name: String,
     val sizeBytes: Long,
     val durationMs: Long,
-)
+    val isVideo: Boolean = false,
+    val hasAudio: Boolean = true,
+    val audioMime: String? = null,
+) {
+    val isMp3Audio: Boolean get() = hasAudio && audioMime == "audio/mpeg"
+}
+
+/** Probe the audio track of an audio/video Uri: (hasAudio, mime). */
+fun queryAudioTrack(context: Context, uri: Uri): Pair<Boolean, String?> {
+    val extractor = android.media.MediaExtractor()
+    return runCatching {
+        extractor.setDataSource(context, uri, null)
+        for (i in 0 until extractor.trackCount) {
+            val mime = extractor.getTrackFormat(i)
+                .getString(android.media.MediaFormat.KEY_MIME)
+            if (mime?.startsWith("audio/") == true) return Pair(true, mime)
+        }
+        Pair(false, null)
+    }.getOrDefault(Pair(false, null)).also { runCatching { extractor.release() } }
+}
 
 fun queryDisplayName(resolver: ContentResolver, uri: Uri): String {
     resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c ->
@@ -70,7 +89,12 @@ fun savedPercent(before: Long, after: Long): Int {
 }
 
 /** Publish a finished file to Download/AudioCompressor so the user keeps it. */
-fun publishToDownloads(context: Context, file: File, displayName: String): Uri? {
+fun publishToDownloads(
+    context: Context,
+    file: File,
+    displayName: String,
+    mime: String = "audio/ogg",
+): Uri? {
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
         // Legacy path: MediaStore.Files needs an absolute DATA path pre-Q.
         @Suppress("DEPRECATION")
@@ -86,7 +110,7 @@ fun publishToDownloads(context: Context, file: File, displayName: String): Uri? 
     }
     val values = ContentValues().apply {
         put(MediaStore.Downloads.DISPLAY_NAME, displayName)
-        put(MediaStore.Downloads.MIME_TYPE, "audio/ogg")
+        put(MediaStore.Downloads.MIME_TYPE, mime)
         put(
             MediaStore.Downloads.RELATIVE_PATH,
             Environment.DIRECTORY_DOWNLOADS + "/AudioCompressor",

@@ -1,21 +1,23 @@
-# Audio Compressor
+# Audio Compressor / ضاغط الصوت
 
-Native Kotlin Android app. Converts audio files (MP3/M4A/WAV/FLAC) to **Opus** (`.opus`) to reduce size. Offline-first, all processing on-device with **zero native dependencies**:
+Native Kotlin Android app. Extract audio from **video** or compress **audio** files.
+Three outputs, all on-device, zero native dependencies:
 
-1. `MediaExtractor` + `MediaCodec` (built into Android) decode the source to PCM.
-2. A small linear resampler brings everything to 48 kHz.
-3. `Concentus` (pure-JVM Opus port) encodes 20 ms frames.
-4. A hand-rolled Ogg muxer (`OggOpusWriter`, RFC 3533 + RFC 7845) writes the file.
+| Output | Mechanism |
+|---|---|
+| Compressed (`.opus`) | MediaCodec decode → 48 kHz resample → Concentus Opus → hand-rolled Ogg muxer |
+| Original MP3 (`.mp3`) | Verbatim stream copy, only when the source audio is MP3 (instant, lossless) |
+| M4A (`.m4a`) | MediaCodec decode → AAC-LC encode → MediaMuxer |
 
-No FFmpeg, no NDK — the APK stays tiny (~4 MB) and CI builds in minutes.
+UI is Arabic by default with an EN toggle (RTL supported), Vinland mono-gray style.
 
-## Presets
+## Presets (Opus and M4A)
 
-| Preset | Codec | Setting | Typical saving |
+| Preset | Opus setting | M4A setting | Typical saving |
 |---|---|---|---|
-| Music | Opus | 96k stereo | ~50% |
-| Balanced | Opus | 64k stereo | ~65% |
-| Voice | Opus | 24k mono voip | ~88% |
+| Music | 96k stereo | 96k stereo AAC | ~50% |
+| Balanced | 64k stereo | 96k stereo AAC | ~65% |
+| Voice | 24k mono voip | 64k mono AAC | ~88% |
 
 Note: MP3 -> Opus is lossy-to-lossy. Quality cannot be restored; the goal is smaller size at acceptable quality.
 

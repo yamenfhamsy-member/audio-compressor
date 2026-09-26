@@ -1,4 +1,55 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Audio Compressor</string>
+    <string name="app_name">ضاغط الصوت</string>
+    <string name="title">ضاغط الصوت</string>
+    <string name="lang_toggle">EN</string>
+
+    <string name="sec_source">01 - المصدر</string>
+    <string name="pick_audio">اختيار صوت</string>
+    <string name="pick_video">اختيار فيديو</string>
+    <string name="add_more">إضافة المزيد</string>
+    <string name="source_note">صوت: MP3 ‏/ M4A ‏/ WAV ‏/ FLAC — وفيديو لاستخراج صوته. التحويل من صيغة مضغوطة لا يستعيد الجودة الأصلية.</string>
+
+    <string name="sec_output">02 - المخرج</string>
+    <string name="out_opus">مضغوط</string>
+    <string name="out_opus_sub">Opus بحجم صغير — يعمل دائماً</string>
+    <string name="out_mp3">MP3 أصلي</string>
+    <string name="out_mp3_sub">نسخ مباشر بدون ضياع — فقط إن كان صوت المصدر MP3</string>
+    <string name="out_m4a">M4A</string>
+    <string name="out_m4a_sub">AAC متوافق مع كل الأجهزة</string>
+    <string name="mp3_compat">%1$d من %2$d ملفات صوتها MP3</string>
+
+    <string name="sec_preset">03 - الجودة (للمضغوط و M4A)</string>
+    <string name="preset_music">موسيقى</string>
+    <string name="preset_music_sub">Opus ‏96k ستيريو</string>
+    <string name="preset_balanced">متوازن</string>
+    <string name="preset_balanced_sub">Opus ‏64k ستيريو</string>
+    <string name="preset_voice">صوتي</string>
+    <string name="preset_voice_sub">Opus ‏24k أحادي</string>
+
+    <string name="sec_files">04 - الملفات</string>
+    <string name="empty">لا ملفات بعد</string>
+    <string name="badge_video">فيديو</string>
+    <string name="badge_audio">صوت</string>
+    <string name="play">تشغيل</string>
+    <string name="stop">إيقاف</string>
+
+    <string name="st_queued">بانتظار</string>
+    <string name="st_working">يعمل</string>
+    <string name="st_done">تم −%d%%</string>
+    <string name="st_error">خطأ</string>
+    <string name="skip_not_mp3">تخطي — الصوت ليس MP3</string>
+    <string name="no_audio">لا يوجد مسار صوتي</string>
+
+    <string name="convert">تحويل</string>
+    <string name="convert_n">تحويل %d ملفات</string>
+    <string name="converting">جارٍ التحويل %d/%d</string>
+
+    <string name="status_offline">بدون إنترنت — الملفات لا تغادر جهازك</string>
+    <string name="status_added">أُضيفت %d ملفات</string>
+    <string name="status_done">تم %d/%d — حُفظ في Download/AudioCompressor</string>
+    <string name="status_failed">فشل الكل — جرّب ملفاً آخر</string>
+    <string name="status_playing">تشغيل المعاينة</string>
+    <string name="status_loading">تحميل المعاينة</string>
+    <string name="status_play_failed">تعذّر التشغيل</string>
 </resources>

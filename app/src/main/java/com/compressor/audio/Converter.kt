@@ -12,6 +12,13 @@ import kotlin.io.use
 import io.github.jaredmdobson.concentus.OpusApplication
 import io.github.jaredmdobson.concentus.OpusEncoder
 
+/** Output modes for the convert screen. */
+enum class OutputMode {
+    OPUS, // transcode to small Opus — always available
+    MP3_COPY, // verbatim copy — only when the source audio is MP3
+    M4A, // transcode to AAC/M4A — always available
+}
+
 /** Compression presets. All output is Opus-in-Ogg (.opus). */
 enum class Preset(
     val title: String,
@@ -26,6 +33,12 @@ enum class Preset(
 }
 
 fun outputExtension(@Suppress("UNUSED_PARAMETER") preset: Preset): String = "opus"
+
+fun outputExtension(mode: OutputMode): String = when (mode) {
+    OutputMode.OPUS -> "opus"
+    OutputMode.MP3_COPY -> "mp3"
+    OutputMode.M4A -> "m4a"
+}
 
 /** Opus encoder always runs at 48 kHz; input is resampled to match. */
 private const val ENCODER_RATE = 48000

@@ -31,17 +31,23 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.compressor.audio.AudioItem
+import com.compressor.audio.OutputMode
 import com.compressor.audio.Preset
+import com.compressor.audio.R
+import com.compressor.audio.convertToM4a
 import com.compressor.audio.convertToOpus
+import com.compressor.audio.copyMp3Stream
 import com.compressor.audio.formatBytes
 import com.compressor.audio.formatDuration
 import com.compressor.audio.outputExtension
 import com.compressor.audio.publishToDownloads
+import com.compressor.audio.queryAudioTrack
 import com.compressor.audio.queryDisplayName
 import com.compressor.audio.queryDurationMs
 import com.compressor.audio.querySize
@@ -68,40 +74,63 @@ data class Job(
     val id: String = java.util.UUID.randomUUID().toString(),
 )
 
+private data class PresetDef(val preset: Preset, val title: Int, val sub: Int)
+private data class OutputDef(val mode: OutputMode, val title: Int, val sub: Int)
+
 @Composable
-fun HomeScreen() {
+fun HomeScreen(lang: String, onToggleLang: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var jobs by remember { mutableStateOf(listOf<Job>()) }
     var presetIndex by remember { mutableStateOf(0) }
+    var outputIndex by remember { mutableStateOf(0) }
     var running by remember { mutableStateOf(false) }
     var doneCount by remember { mutableStateOf(0) }
-    var statusLine by remember { mutableStateOf("OFFLINE - FILES NEVER LEAVE THIS DEVICE") }
+    var statusLine by remember { mutableStateOf(context.getString(R.string.status_offline)) }
     var player by remember { mutableStateOf<MediaPlayer?>(null) }
     var playingUri by remember { mutableStateOf<Uri?>(null) }
 
-    val presets = Preset.entries.toList()
+    val presetDefs = listOf(
+        PresetDef(Preset.MUSIC, R.string.preset_music, R.string.preset_music_sub),
+        PresetDef(Preset.BALANCED, R.string.preset_balanced, R.string.preset_balanced_sub),
+        PresetDef(Preset.VOICE, R.string.preset_voice, R.string.preset_voice_sub),
+    )
+    val outputDefs = listOf(
+        OutputDef(OutputMode.OPUS, R.string.out_opus, R.string.out_opus_sub),
+        OutputDef(OutputMode.MP3_COPY, R.string.out_mp3, R.string.out_mp3_sub),
+        OutputDef(OutputMode.M4A, R.string.out_m4a, R.string.out_m4a_sub),
+    )
+    val mp3Compat = jobs.count { it.item.isMp3Audio }
 
-    val picker = rememberLauncherForActivityResult(
-        ActivityResultContracts.GetMultipleContents(),
-    ) { uris ->
-        if (uris.isEmpty()) return@rememberLauncherForActivityResult
+    fun addUris(uris: List<Uri>, isVideo: Boolean) {
+        if (uris.isEmpty()) return
         scope.launch(Dispatchers.IO) {
             val items = uris.map { uri ->
                 val name = queryDisplayName(context.contentResolver, uri)
+                val (hasAudio, mime) = queryAudioTrack(context, uri)
                 AudioItem(
                     uri = uri,
                     name = name,
                     sizeBytes = querySize(context.contentResolver, uri),
                     durationMs = queryDurationMs(context, uri),
+                    isVideo = isVideo,
+                    hasAudio = hasAudio,
+                    audioMime = mime,
                 )
             }
             withContext(Dispatchers.Main) {
                 jobs = jobs + items.map { Job(it) }
-                statusLine = "${items.size} FILE(S) ADDED"
+                statusLine = context.getString(R.string.status_added, items.size)
             }
         }
     }
+
+    val audioPicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.GetMultipleContents(),
+    ) { uris -> addUris(uris, isVideo = false) }
+    val videoPicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.GetMultipleContents(),
+    ) { uris -> addUris(uris, isVideo = true) }
 
     // Release the preview player when the screen leaves the composition.
     androidx.compose.runtime.DisposableEffect(Unit) {
@@ -130,7 +159,7 @@ fun HomeScreen() {
         }
         player = null
         playingUri = null
-        statusLine = "LOADING PREVIEW"
+        statusLine = context.getString(R.string.status_loading)
         scope.launch(Dispatchers.IO) {
             val p = MediaPlayer()
             val ok = runCatching {
@@ -142,7 +171,7 @@ fun HomeScreen() {
                 if (ok) {
                     player = p
                     playingUri = uri
-                    statusLine = "PLAYING PREVIEW"
+                    statusLine = context.getString(R.string.status_playing)
                     p.setOnCompletionListener {
                         runCatching { it.stop() }
                         it.release()
@@ -151,7 +180,7 @@ fun HomeScreen() {
                     }
                 } else {
                     runCatching { p.release() }
-                    statusLine = "PLAYBACK FAILED"
+                    statusLine = context.getString(R.string.status_play_failed)
                 }
             }
         }
@@ -161,50 +190,82 @@ fun HomeScreen() {
         if (running || jobs.isEmpty()) return
         // Snapshot once: files added mid-run must not move the denominator.
         val snapshot = jobs.toList()
+        val preset = presetDefs[presetIndex].preset
+        val mode = outputDefs[outputIndex].mode
+        val skipMsg = context.getString(R.string.skip_not_mp3)
+        val noAudioMsg = context.getString(R.string.no_audio)
         running = true
         doneCount = 0
-        val preset = presets[presetIndex]
         scope.launch(Dispatchers.IO) {
             snapshot.forEachIndexed { idx, job ->
                 withContext(Dispatchers.Main) {
                     jobs = jobs.map {
                         if (it.id == job.id) it.copy(state = JobState.WORKING, progress = 0f) else it
                     }
-                    statusLine = "CONVERTING ${idx + 1}/${snapshot.size} - ${preset.title.uppercase()}"
+                    statusLine = context.getString(R.string.converting, idx + 1, snapshot.size)
                 }
                 var ok = false
                 var err: String? = null
                 var outFile: File? = null
+                var mime = "audio/ogg"
                 try {
-                    val base = job.item.name.substringBeforeLast('.').ifBlank { "audio" }
-                        .replace(Regex("[^A-Za-z0-9._-]"), "_").take(60)
-                    outFile = File(context.cacheDir, "out_${base}.${outputExtension(preset)}")
-                    if (outFile.exists()) outFile.delete()
-                    var lastPosted = 0f
-                    convertToOpus(context, job.item.uri, outFile, preset) { frac ->
-                        // throttle Main-thread posts to ~5% steps
-                        if (frac - lastPosted > 0.05f || frac >= 1f) {
-                            lastPosted = frac
-                            val f = frac
-                            scope.launch(Dispatchers.Main) {
-                                jobs = jobs.map {
-                                    if (it.id == job.id) it.copy(progress = f) else it
+                    if (!job.item.hasAudio) {
+                        err = noAudioMsg
+                    } else {
+                        val base = job.item.name.substringBeforeLast('.').ifBlank { "audio" }
+                            .replace(Regex("[^A-Za-z0-9._-]"), "_").take(60)
+                        val ext = outputExtension(mode)
+                        outFile = File(context.cacheDir, "out_${base}_${job.id.take(6)}.$ext")
+                        if (outFile.exists()) outFile.delete()
+                        var lastPosted = 0f
+                        val progress: (Float) -> Unit = { frac ->
+                            if (frac - lastPosted > 0.05f || frac >= 1f) {
+                                lastPosted = frac
+                                val f = frac
+                                scope.launch(Dispatchers.Main) {
+                                    jobs = jobs.map {
+                                        if (it.id == job.id) it.copy(progress = f) else it
+                                    }
                                 }
                             }
                         }
-                    }
-                    if (outFile.exists() && outFile.length() > 0) {
-                        val pubName = "${base}.${outputExtension(preset)}"
-                        if (publishToDownloads(context, outFile, pubName) != null) {
-                            ok = true
-                        } else {
-                            err = "could not save to Downloads"
+                        when (mode) {
+                            OutputMode.OPUS -> {
+                                convertToOpus(context, job.item.uri, outFile, preset, progress)
+                                mime = "audio/ogg"
+                            }
+                            OutputMode.MP3_COPY -> {
+                                if (!job.item.isMp3Audio) {
+                                    err = skipMsg
+                                } else {
+                                    copyMp3Stream(context, job.item.uri, outFile, progress)
+                                    mime = "audio/mpeg"
+                                }
+                            }
+                            OutputMode.M4A -> {
+                                val ch = preset.channels
+                                convertToM4a(
+                                    context, job.item.uri, outFile, ch,
+                                    if (ch == 1) 64000 else 96000, progress,
+                                )
+                                mime = "audio/mp4"
+                            }
                         }
-                    } else {
-                        err = "encoder produced no output"
+                        if (err == null) {
+                            if (outFile.exists() && outFile.length() > 0) {
+                                val pubName = "${base}.$ext"
+                                if (publishToDownloads(context, outFile, pubName, mime) != null) {
+                                    ok = true
+                                } else {
+                                    err = context.getString(R.string.status_play_failed)
+                                }
+                            } else {
+                                err = context.getString(R.string.status_failed)
+                            }
+                        }
                     }
                 } catch (e: Exception) {
-                    err = e.message?.take(160) ?: "failed"
+                    err = e.message?.take(160) ?: context.getString(R.string.st_error)
                 }
                 withContext(Dispatchers.Main) {
                     jobs = jobs.map {
@@ -222,8 +283,8 @@ fun HomeScreen() {
                     if (doneCount == snapshot.size) {
                         running = false
                         val saved = jobs.filter { it.state == JobState.DONE }
-                        statusLine = if (saved.isEmpty()) "ALL FAILED - TRY ANOTHER FILE"
-                        else "${saved.size}/${jobs.size} DONE - SAVED TO DOWNLOAD/AUDIOCOMPRESSOR"
+                        statusLine = if (saved.isEmpty()) context.getString(R.string.status_failed)
+                        else context.getString(R.string.status_done, saved.size, jobs.size)
                     }
                 }
             }
@@ -235,21 +296,40 @@ fun HomeScreen() {
             .fillMaxSize()
             .background(MonoTokens.Canvas),
     ) {
-        // AppBar: 56px + 1px blade divider, uppercase spaced title. No logo art.
-        Box(
+        // AppBar: title + language toggle, 1px blade divider.
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .background(MonoTokens.Canvas)
-                .padding(horizontal = 16.dp, vertical = 16.dp),
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                text = "AUDIO COMPRESSOR",
+                text = stringResource(R.string.title),
+                modifier = Modifier.weight(1f),
                 fontFamily = FontFamily.SansSerif,
                 fontWeight = FontWeight.Bold,
                 fontSize = 18.sp,
-                letterSpacing = 2.sp,
+                letterSpacing = 1.sp,
                 color = MonoTokens.Bone,
             )
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(2.dp))
+                    .background(MonoTokens.Steel)
+                    .border(1.dp, MonoTokens.BorderBlade)
+                    .clickable(onClick = onToggleLang)
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = stringResource(R.string.lang_toggle),
+                    fontFamily = FontFamily.Monospace,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 12.sp,
+                    color = MonoTokens.Bone,
+                )
+            }
         }
         HorizontalDivider(color = MonoTokens.BorderBlade, thickness = 1.dp)
 
@@ -261,39 +341,74 @@ fun HomeScreen() {
         ) {
             item {
                 Spacer(Modifier.height(16.dp))
-                SectionLabel("01 - Source files")
+                SectionLabel(stringResource(R.string.sec_source))
                 Spacer(Modifier.height(8.dp))
-                VinlandButton(
-                    label = if (jobs.isEmpty()) "Pick audio files" else "Add more files",
-                    onClick = { if (!running) picker.launch("audio/*") },
-                    primary = false,
-                    enabled = !running,
-                    modifier = Modifier.fillMaxWidth(),
-                )
+                Row(Modifier.fillMaxWidth()) {
+                    VinlandButton(
+                        label = if (jobs.isEmpty()) stringResource(R.string.pick_audio)
+                        else stringResource(R.string.add_more),
+                        onClick = { if (!running) audioPicker.launch("audio/*") },
+                        primary = false,
+                        enabled = !running,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    VinlandButton(
+                        label = stringResource(R.string.pick_video),
+                        onClick = { if (!running) videoPicker.launch("video/*") },
+                        primary = false,
+                        enabled = !running,
+                        modifier = Modifier.weight(1f),
+                    )
+                }
                 Spacer(Modifier.height(8.dp))
                 Text(
-                    text = "MP3 / M4A / WAV / FLAC accepted. Lossy sources are re-encoded; quality cannot be restored.",
-                    fontFamily = FontFamily.Monospace,
+                    text = stringResource(R.string.source_note),
+                    fontFamily = FontFamily.SansSerif,
                     fontSize = 12.sp,
                     color = MonoTokens.Ash,
                 )
                 Spacer(Modifier.height(16.dp))
-                SectionLabel("02 - Preset")
+                SectionLabel(stringResource(R.string.sec_output))
                 Spacer(Modifier.height(8.dp))
                 PresetSegment(
-                    options = presets.map { it.title },
+                    options = outputDefs.map { stringResource(it.title) },
+                    selected = outputIndex,
+                    onSelect = { if (!running) outputIndex = it },
+                )
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    text = stringResource(outputDefs[outputIndex].sub),
+                    fontFamily = FontFamily.SansSerif,
+                    fontSize = 12.sp,
+                    color = MonoTokens.Ash,
+                )
+                if (outputDefs[outputIndex].mode == OutputMode.MP3_COPY && jobs.isNotEmpty()) {
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        text = stringResource(R.string.mp3_compat, mp3Compat, jobs.size),
+                        fontFamily = FontFamily.Monospace,
+                        fontSize = 12.sp,
+                        color = MonoTokens.Ash,
+                    )
+                }
+                Spacer(Modifier.height(16.dp))
+                SectionLabel(stringResource(R.string.sec_preset))
+                Spacer(Modifier.height(8.dp))
+                PresetSegment(
+                    options = presetDefs.map { stringResource(it.title) },
                     selected = presetIndex,
                     onSelect = { if (!running) presetIndex = it },
                 )
                 Spacer(Modifier.height(8.dp))
                 Text(
-                    text = presets[presetIndex].subtitle,
-                    fontFamily = FontFamily.Monospace,
+                    text = stringResource(presetDefs[presetIndex].sub),
+                    fontFamily = FontFamily.SansSerif,
                     fontSize = 12.sp,
                     color = MonoTokens.Ash,
                 )
                 Spacer(Modifier.height(16.dp))
-                SectionLabel("03 - Output")
+                SectionLabel(stringResource(R.string.sec_files))
                 Spacer(Modifier.height(8.dp))
             }
 
@@ -308,7 +423,7 @@ fun HomeScreen() {
                         contentAlignment = Alignment.Center,
                     ) {
                         Text(
-                            text = "NO FILES YET",
+                            text = stringResource(R.string.empty),
                             fontFamily = FontFamily.Monospace,
                             fontSize = 12.sp,
                             letterSpacing = 1.sp,
@@ -336,9 +451,9 @@ fun HomeScreen() {
                 }
                 VinlandButton(
                     label = when {
-                        running -> "Converting $doneCount/${jobs.size}"
-                        jobs.isEmpty() -> "Convert"
-                        else -> "Convert ${jobs.size} file(s)"
+                        running -> stringResource(R.string.converting, doneCount, jobs.size)
+                        jobs.isEmpty() -> stringResource(R.string.convert)
+                        else -> stringResource(R.string.convert_n, jobs.size)
                     },
                     onClick = { runAll() },
                     enabled = !running && jobs.isNotEmpty(),
@@ -361,10 +476,10 @@ fun HomeScreen() {
 @Composable
 private fun FileRow(job: Job, isPlaying: Boolean, onPlay: () -> Unit) {
     val stateTag = when (job.state) {
-        JobState.QUEUED -> "QUEUED"
-        JobState.WORKING -> "WORKING"
-        JobState.DONE -> "DONE -${savedPercent(job.item.sizeBytes, job.outBytes)}%"
-        JobState.ERROR -> "ERROR"
+        JobState.QUEUED -> stringResource(R.string.st_queued)
+        JobState.WORKING -> stringResource(R.string.st_working)
+        JobState.DONE -> stringResource(R.string.st_done, savedPercent(job.item.sizeBytes, job.outBytes))
+        JobState.ERROR -> stringResource(R.string.st_error)
     }
     Column(
         modifier = Modifier
@@ -385,7 +500,7 @@ private fun FileRow(job: Job, isPlaying: Boolean, onPlay: () -> Unit) {
                     .padding(horizontal = 10.dp, vertical = 8.dp),
             ) {
                 Text(
-                    text = if (isPlaying) "STOP" else "PLAY",
+                    text = if (isPlaying) stringResource(R.string.stop) else stringResource(R.string.play),
                     fontFamily = FontFamily.Monospace,
                     fontWeight = FontWeight.Bold,
                     fontSize = 11.sp,
@@ -411,16 +526,25 @@ private fun FileRow(job: Job, isPlaying: Boolean, onPlay: () -> Unit) {
                     color = MonoTokens.Ash,
                 )
             }
-            Text(
-                text = stateTag,
-                fontFamily = FontFamily.Monospace,
-                fontSize = 11.sp,
-                color = when (job.state) {
-                    JobState.DONE -> MonoTokens.SuccessText
-                    JobState.ERROR -> MonoTokens.ErrorText
-                    else -> MonoTokens.Ash
-                },
-            )
+            Column(horizontalAlignment = Alignment.End) {
+                Text(
+                    text = if (job.item.isVideo) stringResource(R.string.badge_video)
+                    else stringResource(R.string.badge_audio),
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 11.sp,
+                    color = MonoTokens.Muted,
+                )
+                Text(
+                    text = stateTag,
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 11.sp,
+                    color = when (job.state) {
+                        JobState.DONE -> MonoTokens.SuccessText
+                        JobState.ERROR -> MonoTokens.ErrorText
+                        else -> MonoTokens.Ash
+                    },
+                )
+            }
         }
         if (job.state == JobState.WORKING) {
             Spacer(Modifier.height(8.dp))
@@ -429,8 +553,8 @@ private fun FileRow(job: Job, isPlaying: Boolean, onPlay: () -> Unit) {
         if (job.state == JobState.ERROR) {
             Spacer(Modifier.height(4.dp))
             Text(
-                text = (job.error ?: "failed").take(160),
-                fontFamily = FontFamily.Monospace,
+                text = (job.error ?: "").take(160),
+                fontFamily = FontFamily.SansSerif,
                 fontSize = 11.sp,
                 color = MonoTokens.ErrorText,
             )
