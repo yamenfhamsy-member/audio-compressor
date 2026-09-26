@@ -191,7 +191,7 @@ private fun MediaFormat.getLong(key: String, default: Long): Long =
     runCatching { getLong(key) }.getOrDefault(default)
 
 /** Maps interleaved input channels to the encoder channel layout. */
-private class ChannelMapper(private val inCh: Int, private val outCh: Int) {
+internal class ChannelMapper(private val inCh: Int, private val outCh: Int) {
     fun map(interleaved: ShortArray, perChannel: Int): ShortArray {
         if (inCh == outCh) return interleaved.copyOf(perChannel * inCh)
         val out = ShortArray(perChannel * outCh)
@@ -224,7 +224,7 @@ private class ChannelMapper(private val inCh: Int, private val outCh: Int) {
  * Streaming linear-interpolation resampler from [inRate] to 48000 Hz.
  * Input and output channel count is always [outCh] (mapping happens before).
  */
-private class LinearResampler(inRate: Int, private val outRate: Int, private val channels: Int) {
+internal class LinearResampler(inRate: Int, private val outRate: Int, private val channels: Int) {
     private val step: Double = inRate.toDouble() / outRate
     private var pos = 0.0
     // leftover input samples carried between calls (per channel interleave tail)
