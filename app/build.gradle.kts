@@ -14,6 +14,8 @@ android {
         versionCode = 1
         versionName = "1.0.0"
         vectorDrawables { useSupportLibrary = true }
+        // arm64 covers all modern phones; keeps the APK under Telegram's 50MB bot limit
+        ndk { abiFilters.addAll(listOf("arm64-v8a", "armeabi-v7a")) }
     }
 
     buildTypes {
@@ -58,6 +60,7 @@ dependencies {
     implementation(libs.compose.foundation)
     implementation(libs.compose.material3)
 
-    // FFmpeg with libopus + libvorbis encoders (v6 line is free on Maven Central)
-    implementation(libs.ffmpeg.kit.full)
+    // FFmpeg audio build (libopus + libvorbis encoders). Maintained fork of the
+    // retired com.arthenica line — same package/API, Maven Central.
+    implementation(libs.ffmpeg.kit.audio)
 }
