@@ -41,6 +41,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.compressor.audio.AudioItem
+import com.compressor.audio.CloudStt
 import com.compressor.audio.ModelManager
 import com.compressor.audio.OutputMode
 import com.compressor.audio.Preset
@@ -419,6 +420,7 @@ fun HomeScreen(lang: String, onToggleLang: () -> Unit) {
     var sttDownloadId by remember { mutableStateOf(-1L) }
     var transcribing by remember { mutableStateOf(false) }
     val sttCancel = remember { AtomicBoolean(false) }
+    var sttEngine by remember { mutableStateOf(CloudStt.getEngine(context)) }
 
     androidx.compose.runtime.LaunchedEffect(Unit) {
         sttStatus = withContext(Dispatchers.IO) {
@@ -458,15 +460,19 @@ fun HomeScreen(lang: String, onToggleLang: () -> Unit) {
 
     fun runTranscribe() {
         if (transcribing || running || splitting || jobs.isEmpty()) return
-        if (sttStatus !is ModelManager.Status.Ready) return
+        val useCloud = sttEngine == CloudStt.ENGINE_CLOUD
+        if (!useCloud && sttStatus !is ModelManager.Status.Ready) return
         val snapshot = jobs.toList()
         val cancelledMsg = context.getString(R.string.stt_cancelled)
         val noAudioMsg = context.getString(R.string.no_audio)
         val emptyMsg = context.getString(R.string.stt_empty)
+        val setupMsg = context.getString(R.string.cloud_needs_setup)
         transcribing = true
         sttCancel.set(false)
         doneCount = 0
         scope.launch(Dispatchers.IO) {
+            val cloudReady = !useCloud ||
+                (CloudStt.getUrl(context).isNotBlank() && CloudStt.getKey(context).isNotBlank())
             val modelDir = ModelManager.sttDir(context).absolutePath
             snapshot.forEachIndexed { idx, job ->
                 withContext(Dispatchers.Main) {
@@ -480,6 +486,8 @@ fun HomeScreen(lang: String, onToggleLang: () -> Unit) {
                 try {
                     if (!job.item.hasAudio) {
                         err = noAudioMsg
+                    } else if (useCloud && !cloudReady) {
+                        err = setupMsg
                     } else {
                         fun post(frac: Float) {
                             scope.launch(Dispatchers.Main) {
@@ -490,11 +498,19 @@ fun HomeScreen(lang: String, onToggleLang: () -> Unit) {
                         }
                         val pcm = SttEngine.decodeMono16k(context, job.item.uri)
                         post(0.05f)
-                        val out = SttEngine.transcribe(
-                            pcm, modelDir,
-                            onProgress = { post(0.05f + 0.95f * it) },
-                            isCancelled = { sttCancel.get() },
-                        )
+                        val out = if (useCloud) {
+                            CloudStt.transcribe(
+                                context, pcm,
+                                onProgress = { post(0.05f + 0.95f * it) },
+                                isCancelled = { sttCancel.get() },
+                            )
+                        } else {
+                            SttEngine.transcribe(
+                                pcm, modelDir,
+                                onProgress = { post(0.05f + 0.95f * it) },
+                                isCancelled = { sttCancel.get() },
+                            )
+                        }
                         if (out.isBlank()) err = emptyMsg else text = out
                         post(1f)
                     }
@@ -795,6 +811,20 @@ fun HomeScreen(lang: String, onToggleLang: () -> Unit) {
                     color = MonoTokens.Ash,
                 )
                 Spacer(Modifier.height(8.dp))
+                PresetSegment(
+                    options = listOf(
+                        stringResource(R.string.stt_engine_device),
+                        stringResource(R.string.stt_engine_cloud),
+                    ),
+                    selected = if (sttEngine == CloudStt.ENGINE_CLOUD) 1 else 0,
+                    onSelect = {
+                        if (!transcribing) {
+                            sttEngine = if (it == 1) CloudStt.ENGINE_CLOUD else CloudStt.ENGINE_DEVICE
+                            CloudStt.setEngine(context, sttEngine)
+                        }
+                    },
+                )
+                Spacer(Modifier.height(8.dp))
                 val sttLine = when (val st = sttStatus) {
                     null -> stringResource(R.string.stt_missing)
                     is ModelManager.Status.Ready -> stringResource(R.string.stt_ready)
@@ -817,7 +847,8 @@ fun HomeScreen(lang: String, onToggleLang: () -> Unit) {
                     },
                 )
                 Spacer(Modifier.height(8.dp))
-                if (sttStatus !is ModelManager.Status.Ready) {
+                val useCloudUi = sttEngine == CloudStt.ENGINE_CLOUD
+                if (!useCloudUi && sttStatus !is ModelManager.Status.Ready) {
                     VinlandButton(
                         label = stringResource(R.string.download_stt),
                         onClick = {
@@ -846,10 +877,40 @@ fun HomeScreen(lang: String, onToggleLang: () -> Unit) {
                             if (transcribing) sttCancel.set(true) else runTranscribe()
                         },
                         primary = true,
-                        enabled = jobs.isNotEmpty() && !running && !splitting,
+                        enabled = jobs.isNotEmpty() && !running && !splitting &&
+                            (useCloudUi || sttStatus is ModelManager.Status.Ready),
                         modifier = Modifier.fillMaxWidth(),
                     )
                 }
+                Spacer(Modifier.height(16.dp))
+                SectionLabel(stringResource(R.string.sec_settings))
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    text = stringResource(R.string.settings_note),
+                    fontFamily = FontFamily.SansSerif,
+                    fontSize = 12.sp,
+                    color = MonoTokens.Ash,
+                )
+                Spacer(Modifier.height(8.dp))
+                var workerUrl by remember { mutableStateOf(CloudStt.getUrl(context)) }
+                var workerKey by remember { mutableStateOf(CloudStt.getKey(context)) }
+                VinlandField(
+                    label = stringResource(R.string.worker_url_label),
+                    value = workerUrl,
+                    onChange = {
+                        workerUrl = it
+                        CloudStt.setUrl(context, it)
+                    },
+                )
+                Spacer(Modifier.height(8.dp))
+                VinlandField(
+                    label = stringResource(R.string.worker_key_label),
+                    value = workerKey,
+                    onChange = {
+                        workerKey = it
+                        CloudStt.setKey(context, it)
+                    },
+                )
                 Spacer(Modifier.height(24.dp))
             }
         }
@@ -977,7 +1038,6 @@ private fun FileRow(
         }
     }
 }
-
 /** Small chiseled action button for row-level actions (copy / save). */
 @Composable
 private fun MiniButton(label: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
@@ -996,6 +1056,41 @@ private fun MiniButton(label: String, onClick: () -> Unit, modifier: Modifier = 
             fontWeight = FontWeight.Bold,
             fontSize = 12.sp,
             color = MonoTokens.Bone,
+        )
+    }
+}
+
+/** Sharp settings input: steel fill, 1px blade border, radius 0. */
+@Composable
+private fun VinlandField(label: String, value: String, onChange: (String) -> Unit) {
+    Column(Modifier.fillMaxWidth()) {
+        Text(
+            text = label,
+            fontFamily = FontFamily.Monospace,
+            fontSize = 11.sp,
+            color = MonoTokens.Ash,
+        )
+        Spacer(Modifier.height(4.dp))
+        androidx.compose.material3.TextField(
+            value = value,
+            onValueChange = onChange,
+            singleLine = true,
+            textStyle = androidx.compose.ui.text.TextStyle(
+                fontFamily = FontFamily.Monospace,
+                fontSize = 13.sp,
+                color = MonoTokens.Bone,
+            ),
+            shape = RoundedCornerShape(0.dp),
+            colors = androidx.compose.material3.TextFieldDefaults.colors(
+                focusedContainerColor = MonoTokens.Steel,
+                unfocusedContainerColor = MonoTokens.Iron,
+                focusedIndicatorColor = MonoTokens.BorderSharp,
+                unfocusedIndicatorColor = MonoTokens.BorderBlade,
+                cursorColor = MonoTokens.Bone,
+            ),
+            modifier = Modifier
+                .fillMaxWidth()
+                .border(1.dp, MonoTokens.BorderBlade, RoundedCornerShape(0.dp)),
         )
     }
 }

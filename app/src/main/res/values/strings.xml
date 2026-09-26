@@ -85,4 +85,12 @@
     <string name="copy_text">نسخ</string>
     <string name="copied">نُسخ النص</string>
     <string name="saved_txt">حُفظ: %1$s</string>
+
+    <string name="stt_engine_device">على الجهاز</string>
+    <string name="stt_engine_cloud">سحابة</string>
+    <string name="cloud_needs_setup">أدخل رابط الـ Worker والمفتاح في الإعدادات</string>
+    <string name="sec_settings">07 - الإعدادات (النسخ السحابي)</string>
+    <string name="settings_note">رابط الـ Worker والمفتاح يُحفظان على جهازك فقط. اتركهما فارغين إن كنت تستخدم الوضع المحلي.</string>
+    <string name="worker_url_label">رابط الـ Worker</string>
+    <string name="worker_key_label">المفتاح</string>
 </resources>

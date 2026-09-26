@@ -85,4 +85,12 @@
     <string name="copy_text">Copy</string>
     <string name="copied">Text copied</string>
     <string name="saved_txt">Saved: %1$s</string>
+
+    <string name="stt_engine_device">On-device</string>
+    <string name="stt_engine_cloud">Cloud</string>
+    <string name="cloud_needs_setup">Enter the Worker URL and key in Settings</string>
+    <string name="sec_settings">07 - Settings (cloud transcription)</string>
+    <string name="settings_note">The Worker URL and key stay on your device only. Leave empty for on-device mode.</string>
+    <string name="worker_url_label">Worker URL</string>
+    <string name="worker_key_label">Key</string>
 </resources>
