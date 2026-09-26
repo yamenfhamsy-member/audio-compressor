@@ -241,7 +241,6 @@ object StemSplit {
             } finally {
                 inputTensor.close()
             }
-            }
             for (i in 0 until actual) {
                 resultL[start + i] += outL[i] * window[i]
                 resultR[start + i] += outR[i] * window[i]
