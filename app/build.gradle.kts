@@ -11,11 +11,12 @@ android {
         applicationId = "com.compressor.audio"
         minSdk = 26
         targetSdk = 34
-        versionCode = 2
-        versionName = "1.1.0"
+        versionCode = 3
+        versionName = "1.2.0"
         vectorDrawables { useSupportLibrary = true }
-        // ORT ships prebuilt .so per ABI; arm64 covers modern phones, v7a the rest.
-        ndk { abiFilters.addAll(listOf("arm64-v8a", "armeabi-v7a")) }
+        // arm64 covers all modern phones (v7a devices can't run the 63-333MB
+        // ML models anyway); single ABI keeps the APK under Telegram's 50MB cap.
+        ndk { abiFilters.add("arm64-v8a") }
     }
 
     buildTypes {
@@ -23,8 +24,9 @@ android {
             // CI builds are sideloaded for testing: sign with the debug key
             // so assembleRelease emits app-release.apk (not app-release-unsigned.apk).
             signingConfig = signingConfigs.getByName("debug")
-            isMinifyEnabled = false
-            isShrinkResources = false
+            // Shrink to stay under Telegram's 50MB bot-API cap (Vosk+ORT natives).
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
