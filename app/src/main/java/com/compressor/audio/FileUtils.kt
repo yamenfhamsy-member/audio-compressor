@@ -68,6 +68,17 @@ fun queryDurationMs(context: Context, uri: Uri): Long {
     }.getOrDefault(0L).also { runCatching { r.release() } }
 }
 
+/** Copy a content Uri into app cache with the given extension (for uploads). */
+fun copyUriToCache(context: Context, uri: Uri, ext: String, tag: String): File {
+    val safeExt = ext.replace(Regex("[^A-Za-z0-9]"), "").take(5).ifBlank { "bin" }
+    val out = File(context.cacheDir, "up_${tag}.$safeExt")
+    if (out.exists()) out.delete()
+    context.contentResolver.openInputStream(uri)?.use { ins ->
+        out.outputStream().buffered().use { outs -> ins.copyTo(outs) }
+    }
+    return out
+}
+
 fun formatBytes(bytes: Long): String {
     if (bytes <= 0) return "0 B"
     val units = arrayOf("B", "KB", "MB", "GB")

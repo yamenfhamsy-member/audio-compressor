@@ -41,8 +41,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.compressor.audio.AudioItem
+import com.compressor.audio.CloudSplit
 import com.compressor.audio.CloudStt
 import com.compressor.audio.ModelManager
+import com.compressor.audio.copyUriToCache
 import com.compressor.audio.OutputMode
 import com.compressor.audio.Preset
 import com.compressor.audio.R
@@ -312,6 +314,7 @@ fun HomeScreen(lang: String, onToggleLang: () -> Unit) {
     var downloadId by remember { mutableStateOf(-1L) }
     var splitting by remember { mutableStateOf(false) }
     val splitCancel = remember { AtomicBoolean(false) }
+    var splitEngine by remember { mutableStateOf(CloudSplit.getEngine(context)) }
 
     androidx.compose.runtime.LaunchedEffect(Unit) {
         modelStatus = withContext(Dispatchers.IO) {
@@ -328,6 +331,110 @@ fun HomeScreen(lang: String, onToggleLang: () -> Unit) {
                 if (st !is ModelManager.Status.Downloading) break
                 delay(1000)
             }
+        }
+    }
+
+    fun extOf(item: AudioItem): String {
+        val fromName = item.name.substringAfterLast('.', "").lowercase()
+            .replace(Regex("[^a-z0-9]"), "")
+        if (fromName.isNotEmpty() && fromName.length <= 5) return fromName
+        return if (item.isVideo) "mp4" else "mp3"
+    }
+
+    fun runSplitCloud() {
+        if (splitting || running || transcribing || jobs.isEmpty()) return
+        if (CloudSplit.getPat(context).isBlank()) return
+        val snapshot = jobs.toList()
+        val cancelledMsg = context.getString(R.string.split_cancelled)
+        val noAudioMsg = context.getString(R.string.no_audio)
+        splitting = true
+        splitCancel.set(false)
+        doneCount = 0
+        scope.launch(Dispatchers.IO) {
+            val phaseUpload = context.getString(R.string.cloud_uploading)
+            val phaseQueued = context.getString(R.string.cloud_queued)
+            val phaseWorking = context.getString(R.string.cloud_working)
+            val phaseDownload = context.getString(R.string.cloud_download)
+            snapshot.forEachIndexed { idx, job ->
+                withContext(Dispatchers.Main) {
+                    jobs = jobs.map {
+                        if (it.id == job.id) it.copy(state = JobState.WORKING, progress = 0f) else it
+                    }
+                    statusLine = context.getString(R.string.splitting, idx + 1, snapshot.size)
+                }
+                var ok = false
+                var err: String? = null
+                var names = ""
+                try {
+                    if (!job.item.hasAudio) {
+                        err = noAudioMsg
+                    } else {
+                        val ext = extOf(job.item)
+                        val src = copyUriToCache(context, job.item.uri, ext, job.id.take(6))
+                        fun post(frac: Float) {
+                            scope.launch(Dispatchers.Main) {
+                                jobs = jobs.map {
+                                    if (it.id == job.id) it.copy(progress = frac) else it
+                                }
+                            }
+                        }
+                        val stems = CloudSplit.splitFile(
+                            context, src, ext, job.id.replace("-", "").take(12),
+                            onProgress = { frac, phase ->
+                                val label = when (phase) {
+                                    "upload" -> phaseUpload
+                                    "queued", "dispatch" -> phaseQueued
+                                    "working" -> phaseWorking
+                                    else -> phaseDownload
+                                }
+                                scope.launch(Dispatchers.Main) {
+                                    jobs = jobs.map {
+                                        if (it.id == job.id) it.copy(progress = frac) else it
+                                    }
+                                    statusLine = "$label ${((frac) * 100).toInt()}%"
+                                }
+                            },
+                            isCancelled = { splitCancel.get() },
+                        )
+                        runCatching { src.delete() }
+                        val base = job.item.name.substringBeforeLast('.').ifBlank { "audio" }
+                            .replace(Regex("[^A-Za-z0-9._-]"), "_").take(60)
+                        val v = publishToDownloads(context, stems.vocals, "${base}_vocals.wav", "audio/wav")
+                        val m = publishToDownloads(context, stems.instrumental, "${base}_instrumental.wav", "audio/wav")
+                        runCatching { stems.vocals.delete() }
+                        runCatching { stems.instrumental.delete() }
+                        if (v != null && m != null) {
+                            ok = true
+                            names = context.getString(
+                                R.string.split_saved, "${base}_vocals.wav", "${base}_instrumental.wav",
+                            )
+                        }
+                    }
+                } catch (e: CancellationException) {
+                    err = cancelledMsg
+                } catch (e: Exception) {
+                    err = e.message?.take(160) ?: context.getString(R.string.st_error)
+                }
+                withContext(Dispatchers.Main) {
+                    jobs = jobs.map {
+                        if (it.id == job.id) {
+                            if (ok) it.copy(
+                                state = JobState.DONE, progress = 1f,
+                                outBytes = 0, outName = names, note = names,
+                            )
+                            else it.copy(state = JobState.ERROR, error = err)
+                        } else it
+                    }
+                    doneCount++
+                    if (names.isNotEmpty() && ok) statusLine = names
+                    if (doneCount == snapshot.size || splitCancel.get()) {
+                        splitting = false
+                        if (splitCancel.get()) statusLine = cancelledMsg
+                    }
+                }
+                if (splitCancel.get()) return@forEachIndexed
+            }
+            withContext(Dispatchers.Main) { splitting = false }
         }
     }
 
@@ -752,6 +859,20 @@ fun HomeScreen(lang: String, onToggleLang: () -> Unit) {
                     color = MonoTokens.Ash,
                 )
                 Spacer(Modifier.height(8.dp))
+                PresetSegment(
+                    options = listOf(
+                        stringResource(R.string.split_engine_device),
+                        stringResource(R.string.split_engine_cloud),
+                    ),
+                    selected = if (splitEngine == CloudSplit.ENGINE_CLOUD) 1 else 0,
+                    onSelect = {
+                        if (!splitting) {
+                            splitEngine = if (it == 1) CloudSplit.ENGINE_CLOUD else CloudSplit.ENGINE_DEVICE
+                            CloudSplit.setEngine(context, splitEngine)
+                        }
+                    },
+                )
+                Spacer(Modifier.height(8.dp))
                 val modelLine = when (val st = modelStatus) {
                     null -> stringResource(R.string.model_missing)
                     is ModelManager.Status.Ready -> stringResource(R.string.model_ready)
@@ -771,7 +892,28 @@ fun HomeScreen(lang: String, onToggleLang: () -> Unit) {
                     },
                 )
                 Spacer(Modifier.height(8.dp))
-                if (modelStatus !is ModelManager.Status.Ready) {
+                val useCloudSplit = splitEngine == CloudSplit.ENGINE_CLOUD
+                if (useCloudSplit) {
+                    Text(
+                        text = stringResource(R.string.split_cloud_note),
+                        fontFamily = FontFamily.SansSerif,
+                        fontSize = 12.sp,
+                        color = MonoTokens.Ash,
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    VinlandButton(
+                        label = if (splitting) stringResource(R.string.split_cancel)
+                        else if (jobs.isEmpty()) stringResource(R.string.split_btn)
+                        else stringResource(R.string.split_n, jobs.size),
+                        onClick = {
+                            if (splitting) splitCancel.set(true) else runSplitCloud()
+                        },
+                        primary = true,
+                        enabled = jobs.isNotEmpty() && !running && !transcribing &&
+                            CloudSplit.getPat(context).isNotBlank(),
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                } else if (modelStatus !is ModelManager.Status.Ready) {
                     VinlandButton(
                         label = stringResource(R.string.download_model),
                         onClick = {
@@ -894,6 +1036,7 @@ fun HomeScreen(lang: String, onToggleLang: () -> Unit) {
                 Spacer(Modifier.height(8.dp))
                 var workerUrl by remember { mutableStateOf(CloudStt.getUrl(context)) }
                 var workerKey by remember { mutableStateOf(CloudStt.getKey(context)) }
+                var githubPat by remember { mutableStateOf(CloudSplit.getPat(context)) }
                 VinlandField(
                     label = stringResource(R.string.worker_url_label),
                     value = workerUrl,
@@ -909,6 +1052,15 @@ fun HomeScreen(lang: String, onToggleLang: () -> Unit) {
                     onChange = {
                         workerKey = it
                         CloudStt.setKey(context, it)
+                    },
+                )
+                Spacer(Modifier.height(8.dp))
+                VinlandField(
+                    label = stringResource(R.string.github_pat_label),
+                    value = githubPat,
+                    onChange = {
+                        githubPat = it
+                        CloudSplit.setPat(context, it)
                     },
                 )
                 Spacer(Modifier.height(24.dp))

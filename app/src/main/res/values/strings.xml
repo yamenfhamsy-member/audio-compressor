@@ -67,6 +67,15 @@
     <string name="split_cancelled">أُلغي الفصل</string>
     <string name="split_saved">حُفظ: %1$s و %2$s</string>
 
+    <string name="split_engine_device">على الجهاز</string>
+    <string name="split_engine_cloud">سحابي مجاني</string>
+    <string name="split_cloud_note">الفصل السحابي عبر GitHub Actions (مجاني): يُرفع الصوت، يُفصل بـ Demucs، تُحمَّل النتيجتان. يحتاج توكن GitHub في الإعدادات ويأخذ دقائق.</string>
+    <string name="github_pat_label">توكن GitHub (للفصل السحابي)</string>
+    <string name="cloud_uploading">جارٍ الرفع</string>
+    <string name="cloud_queued">بالانتظار</string>
+    <string name="cloud_working">جارٍ الفصل سحابياً</string>
+    <string name="cloud_download">جارٍ التحميل</string>
+
     <string name="sec_stt">06 - الصوت إلى كلمات</string>
     <string name="stt_desc">يحوّل الكلام في الملف الصوتي إلى نص مكتوب (عربي) أوفلاين. يحتاج تحميل موديل مرة واحدة (~333MB) ثم يعمل بدون إنترنت.</string>
     <string name="stt_downloading">جارٍ تحميل موديل الكلام %d%%</string>
