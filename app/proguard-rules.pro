@@ -6,3 +6,7 @@
 -dontwarn ai.onnxruntime.**
 -dontwarn org.vosk.**
 -dontwarn org.jtransforms.**
+# JTransforms' large-array helper references desktop-only sun.misc.Cleaner;
+# we never allocate >2^31 elements, so this path is dead on Android.
+-dontwarn pl.edu.icm.**
+-dontwarn sun.misc.**
