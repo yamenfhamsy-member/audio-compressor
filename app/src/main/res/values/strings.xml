@@ -36,18 +36,18 @@
 
     <string name="st_queued">ناطرة دورها</string>
     <string name="st_working">عم نشتغل عليها</string>
-    <string name="st_done">خلصت! صغرت −%d%%</string>
+    <string name="st_done">خلصت! صغرت −%1$d%%</string>
     <string name="st_error">ما زبطت</string>
     <string name="skip_not_mp3">تخطيناه — هاد مو MP3 حقيقي</string>
     <string name="no_audio">هالملف ما فيه صوت أبداً</string>
 
     <string name="convert">حوّل</string>
-    <string name="convert_n">حوّل %d ملفات</string>
-    <string name="converting">عم نحوّل %d/%d … لحظة ومنخلص</string>
+    <string name="convert_n">حوّل %1$d ملفات</string>
+    <string name="converting">عم نحوّل %1$d/%2$d … لحظة ومنخلص</string>
 
     <string name="status_offline">الضغط والاستخراج شغالين حتى بدون إنترنت — والفصل والنسخ علينا، مجاناً</string>
-    <string name="status_added">يا سلام! صار عنا %d ملفات</string>
-    <string name="status_done">خلصنا كل شي! %d/%d ناطرينك بـ Download/ThorfinAudioWorld</string>
+    <string name="status_added">يا سلام! صار عنا %1$d ملفات</string>
+    <string name="status_done">خلصنا كل شي! %1$d/%2$d ناطرينك بـ Download/ThorfinAudioWorld</string>
     <string name="status_failed">هالمرة ما مشي الحال — جرّب ملف تاني</string>
     <string name="status_playing">تفضل اسمع</string>
     <string name="status_loading">عم نجهّزلك المعاينة…</string>
@@ -60,8 +60,8 @@
     <string name="cloud_working">شغالين عالفصل… خليك قريب</string>
     <string name="cloud_download">عم نجيبلك النتيجة</string>
     <string name="split_btn">افصل الغناء</string>
-    <string name="split_n">افصل الغناء (%d)</string>
-    <string name="splitting">عم نفصل %d/%d … الشغلة الحلوة بدها وقت</string>
+    <string name="split_n">افصل الغناء (%1$d)</string>
+    <string name="splitting">عم نفصل %1$d/%2$d … الشغلة الحلوة بدها وقت</string>
     <string name="split_cancel">خلص بكفي</string>
     <string name="split_cancelled">تكرم — وقفنا متل ما طلبت</string>
     <string name="split_saved">وصلوا بالسلامة! %1$s و %2$s</string>
@@ -69,8 +69,8 @@
     <string name="sec_stt">06 - حوّل الحكي لكلمات</string>
     <string name="stt_cloud_note">عندك تسجيل وبدك ياه مكتوب؟ ابعتلنا ياه ومنرجّعلك كل كلمة انقالت بالعربي. كم دقيقة وبتكون الكلمات بين إيديك.</string>
     <string name="stt_btn">حوّل لكلمات</string>
-    <string name="stt_n">حوّل لكلمات (%d)</string>
-    <string name="transcribing">عم نسمع ونكتب %d/%d …</string>
+    <string name="stt_n">حوّل لكلمات (%1$d)</string>
+    <string name="transcribing">عم نسمع ونكتب %1$d/%2$d …</string>
     <string name="stt_cancel">خلص بكفي</string>
     <string name="stt_cancelled">تكرم — وقفنا متل ما طلبت</string>
     <string name="stt_empty">سمعنا الملف كلو وما لقينا حكي واضح فيه</string>

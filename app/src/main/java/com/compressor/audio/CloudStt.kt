@@ -26,6 +26,9 @@ object CloudStt {
         onProgress: (Float, String) -> Unit = { _, _ -> },
         isCancelled: () -> Boolean = { false },
     ): String {
+        fun check() {
+            if (isCancelled()) throw CancellationException("cloud stt cancelled")
+        }
         check()
         onProgress(0.02f, "upload")
         val url = GhActions.uploadTemp(file)

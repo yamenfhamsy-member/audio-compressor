@@ -25,6 +25,9 @@ object CloudSplit {
         onProgress: (Float, String) -> Unit = { _, _ -> },
         isCancelled: () -> Boolean = { false },
     ): CloudStems {
+        fun check() {
+            if (isCancelled()) throw CancellationException("cloud split cancelled")
+        }
         check()
         onProgress(0.02f, "upload")
         val url = GhActions.uploadTemp(file)

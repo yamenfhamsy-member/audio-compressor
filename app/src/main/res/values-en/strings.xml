@@ -36,18 +36,18 @@
 
     <string name="st_queued">Waiting its turn</string>
     <string name="st_working">Working on it</string>
-    <string name="st_done">Done! −%d%% smaller</string>
+    <string name="st_done">Done! −%1$d%% smaller</string>
     <string name="st_error">Didn\'t make it</string>
     <string name="skip_not_mp3">Skipped — that\'s not a real MP3</string>
     <string name="no_audio">There\'s no sound in this file at all</string>
 
     <string name="convert">Convert</string>
-    <string name="convert_n">Convert %d files</string>
-    <string name="converting">Converting %d/%d… one moment and we\'re done</string>
+    <string name="convert_n">Convert %1$d files</string>
+    <string name="converting">Converting %1$d/%2$d… one moment and we\'re done</string>
 
     <string name="status_offline">Compression works even offline — splitting and transcription are on us, free</string>
-    <string name="status_added">Lovely! We\'ve got %d file(s) now</string>
-    <string name="status_done">Everything\'s ready! %d/%d waiting for you in Download/ThorfinAudioWorld</string>
+    <string name="status_added">Lovely! We\'ve got %1$d file(s) now</string>
+    <string name="status_done">Everything\'s ready! %1$d/%2$d waiting for you in Download/ThorfinAudioWorld</string>
     <string name="status_failed">Didn\'t work out this time — try another file</string>
     <string name="status_playing">Have a listen</string>
     <string name="status_loading">Getting your preview ready…</string>
@@ -60,8 +60,8 @@
     <string name="cloud_working">Splitting away… stay close</string>
     <string name="cloud_download">Bringing your result back</string>
     <string name="split_btn">Split vocals</string>
-    <string name="split_n">Split vocals (%d)</string>
-    <string name="splitting">Splitting %d/%d… good things take time</string>
+    <string name="split_n">Split vocals (%1$d)</string>
+    <string name="splitting">Splitting %1$d/%2$d… good things take time</string>
     <string name="split_cancel">That\'s enough</string>
     <string name="split_cancelled">As you wish — stopped</string>
     <string name="split_saved">They arrived safely! %1$s and %2$s</string>
@@ -69,8 +69,8 @@
     <string name="sec_stt">06 - Turn speech into words</string>
     <string name="stt_cloud_note">Got a recording you need in writing? Send it over and we\'ll return every word said, in Arabic. A few minutes and the words are in your hands.</string>
     <string name="stt_btn">Transcribe</string>
-    <string name="stt_n">Transcribe (%d)</string>
-    <string name="transcribing">Listening and writing %d/%d…</string>
+    <string name="stt_n">Transcribe (%1$d)</string>
+    <string name="transcribing">Listening and writing %1$d/%2$d…</string>
     <string name="stt_cancel">That\'s enough</string>
     <string name="stt_cancelled">As you wish — stopped</string>
     <string name="stt_empty">Listened to the whole thing and found no clear speech</string>
