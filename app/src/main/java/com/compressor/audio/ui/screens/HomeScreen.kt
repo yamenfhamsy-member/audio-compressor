@@ -6,6 +6,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -82,7 +83,7 @@ fun HomeScreen() {
     val presets = Preset.entries.toList()
 
     val picker = rememberLauncherForActivityResult(
-        ActivityResultContracts.OpenMultipleDocuments(),
+        ActivityResultContracts.GetMultipleContents(),
     ) { uris ->
         if (uris.isEmpty()) return@OpenMultipleDocuments
         scope.launch(Dispatchers.IO) {
@@ -217,7 +218,7 @@ fun HomeScreen() {
                 Spacer(Modifier.height(8.dp))
                 VinlandButton(
                     label = if (jobs.isEmpty()) "Pick audio files" else "Add more files",
-                    onClick = { picker.launch(arrayOf("audio/*")) },
+                    onClick = { picker.launch("audio/*") },
                     primary = false,
                     modifier = Modifier.fillMaxWidth(),
                 )
