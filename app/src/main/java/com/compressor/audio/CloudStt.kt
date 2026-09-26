@@ -21,6 +21,9 @@ object CloudStt {
     const val ENGINE_DEVICE = "device"
     const val ENGINE_CLOUD = "cloud"
     const val DEFAULT_URL = "https://thorfin-stt.img-api.workers.dev"
+    // Bundled fallback key so the user never types anything. The repo is
+    // public, so treat this as obscurity, not security: rotate on abuse.
+    const val DEFAULT_KEY = "bf8d306c748e0ddb8083c55ec31eaa45261bde72054fd383"
 
     private const val CHUNK_SEC = 25
     private const val CHUNK_SAMPLES = 16000 * CHUNK_SEC
@@ -43,9 +46,13 @@ object CloudStt {
             .edit().putString("worker_url", url.trim().trimEnd('/')).apply()
     }
 
-    fun getKey(context: Context): String =
-        context.getSharedPreferences("settings", Context.MODE_PRIVATE)
-            .getString("worker_key", "") ?: ""
+    fun getKey(context: Context): String {
+        val saved = context.getSharedPreferences("settings", Context.MODE_PRIVATE)
+            .getString("worker_key", null)
+        // Empty pref (fresh install or cleared) -> bundled key. Returning the
+        // default keeps cloud mode working with zero user input.
+        return saved ?: DEFAULT_KEY
+    }
 
     fun setKey(context: Context, key: String) {
         context.getSharedPreferences("settings", Context.MODE_PRIVATE)

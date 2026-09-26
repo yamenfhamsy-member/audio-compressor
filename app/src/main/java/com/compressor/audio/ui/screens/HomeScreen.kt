@@ -315,6 +315,9 @@ fun HomeScreen(lang: String, onToggleLang: () -> Unit) {
     var splitting by remember { mutableStateOf(false) }
     val splitCancel = remember { AtomicBoolean(false) }
     var splitEngine by remember { mutableStateOf(CloudSplit.getEngine(context)) }
+    // Declared early: cloud split (below) references STT/transcribe state.
+    var transcribing by remember { mutableStateOf(false) }
+    val sttCancel = remember { AtomicBoolean(false) }
 
     androidx.compose.runtime.LaunchedEffect(Unit) {
         modelStatus = withContext(Dispatchers.IO) {
@@ -522,11 +525,9 @@ fun HomeScreen(lang: String, onToggleLang: () -> Unit) {
         }
     }
 
-    // ---- Speech to text (section 06) ----
+    // ---- Speech to text (section 06; transcribing state declared above) ----
     var sttStatus by remember { mutableStateOf<ModelManager.Status?>(null) }
     var sttDownloadId by remember { mutableStateOf(-1L) }
-    var transcribing by remember { mutableStateOf(false) }
-    val sttCancel = remember { AtomicBoolean(false) }
     var sttEngine by remember { mutableStateOf(CloudStt.getEngine(context)) }
 
     androidx.compose.runtime.LaunchedEffect(Unit) {
