@@ -169,11 +169,11 @@ object StemSplit {
             mixL[TRIM + i] = mix[i * 2]
             mixR[TRIM + i] = mix[i * 2 + 1]
         }
-        val step = ((1f - OVERLAP) * CHUNK).toInt()
+        val hopStep = ((1f - OVERLAP) * CHUNK).toInt()
         val resultL = FloatArray(total)
         val resultR = FloatArray(total)
         val divider = FloatArray(total)
-        val chunkStarts = (0 until total step step).toList()
+        val chunkStarts = (0 until total step hopStep).toList()
         val totalChunks = chunkStarts.size
 
         val inBuf = ByteBuffer.allocateDirect(1 * 4 * DIM_F * DIM_T * 4)

@@ -48,7 +48,7 @@ class MdxStft(
         for (f in 0 until frames) {
             val off = f * hop
             for (n in 0 until nFft) {
-                buf[2 * n] = padded[off + n] * window[n]
+                buf[2 * n] = (padded[off + n] * window[n]).toDouble()
                 buf[2 * n + 1] = 0.0
             }
             fft.complexForward(buf)
