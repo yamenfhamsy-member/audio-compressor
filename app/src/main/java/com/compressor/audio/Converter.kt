@@ -9,8 +9,8 @@ import java.io.File
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import kotlin.io.use
-import org.concentus.OpusApplication
-import org.concentus.OpusEncoder
+import io.github.jaredmdobson.concentus.OpusApplication
+import io.github.jaredmdobson.concentus.OpusEncoder
 
 /** Compression presets. All output is Opus-in-Ogg (.opus). */
 enum class Preset(
@@ -18,7 +18,7 @@ enum class Preset(
     val subtitle: String,
     val channels: Int,
     val bitrate: Int,
-    val application: Int,
+    val application: OpusApplication,
 ) {
     MUSIC("Music", "Opus 96k stereo", 2, 96000, OpusApplication.OPUS_APPLICATION_AUDIO),
     BALANCED("Balanced", "Opus 64k stereo", 2, 64000, OpusApplication.OPUS_APPLICATION_AUDIO),
@@ -72,7 +72,7 @@ fun convertToOpus(
         decoder.configure(inFormat, null, null, 0)
         decoder.start()
         try {
-            val encoder = OpusEncoder.create(ENCODER_RATE, preset.channels, preset.application)
+            val encoder = OpusEncoder(ENCODER_RATE, preset.channels, preset.application)
             encoder.bitrate = preset.bitrate
 
             OggOpusWriter(dest, preset.channels, inRate).use { ogg ->

@@ -7,7 +7,7 @@ import java.io.FileOutputStream
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import kotlin.random.Random
-import org.concentus.OpusEncoder
+import io.github.jaredmdobson.concentus.OpusEncoder
 
 /**
  * Minimal Ogg container writer for Opus packets (RFC 3533 framing + RFC 7845 headers).
