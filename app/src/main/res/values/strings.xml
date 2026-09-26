@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">ضاغط الصوت</string>
-    <string name="title">ضاغط الصوت</string>
+    <string name="app_name">Thorfin Audio World</string>
+    <string name="title">Thorfin Audio World</string>
     <string name="lang_toggle">EN</string>
 
     <string name="sec_source">01 - المصدر</string>
@@ -47,7 +47,7 @@
 
     <string name="status_offline">بدون إنترنت — الملفات لا تغادر جهازك</string>
     <string name="status_added">أُضيفت %d ملفات</string>
-    <string name="status_done">تم %d/%d — حُفظ في Download/AudioCompressor</string>
+    <string name="status_done">تم %d/%d — حُفظ في Download/ThorfinAudioWorld</string>
     <string name="status_failed">فشل الكل — جرّب ملفاً آخر</string>
     <string name="status_playing">تشغيل المعاينة</string>
     <string name="status_loading">تحميل المعاينة</string>

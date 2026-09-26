@@ -88,7 +88,7 @@ fun savedPercent(before: Long, after: Long): Int {
     return ((1 - after.toDouble() / before) * 100).toInt().coerceIn(0, 99)
 }
 
-/** Publish a finished file to Download/AudioCompressor so the user keeps it. */
+/** Publish a finished file to Download/ThorfinAudioWorld so the user keeps it. */
 fun publishToDownloads(
     context: Context,
     file: File,
@@ -100,7 +100,7 @@ fun publishToDownloads(
         @Suppress("DEPRECATION")
         val dir = File(
             Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
-            "AudioCompressor",
+            "ThorfinAudioWorld",
         )
         if (!dir.mkdirs() && !dir.isDirectory) return null
         val dest = File(dir, displayName)
@@ -113,7 +113,7 @@ fun publishToDownloads(
         put(MediaStore.Downloads.MIME_TYPE, mime)
         put(
             MediaStore.Downloads.RELATIVE_PATH,
-            Environment.DIRECTORY_DOWNLOADS + "/AudioCompressor",
+            Environment.DIRECTORY_DOWNLOADS + "/ThorfinAudioWorld",
         )
         put(MediaStore.Downloads.IS_PENDING, 1)
     }

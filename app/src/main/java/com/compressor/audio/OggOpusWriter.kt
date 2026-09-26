@@ -140,7 +140,7 @@ class OggOpusWriter(
     }
 
     private fun opusTags(): ByteArray {
-        val vendor = "AudioCompressor".toByteArray(Charsets.UTF_8)
+        val vendor = "Thorfin Audio World".toByteArray(Charsets.UTF_8)
         val b = ByteBuffer.allocate(8 + 4 + vendor.size + 4).order(ByteOrder.LITTLE_ENDIAN)
         b.put("OpusTags".toByteArray(Charsets.US_ASCII))
         b.putInt(vendor.size)

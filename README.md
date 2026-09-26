@@ -1,4 +1,4 @@
-# Audio Compressor / ضاغط الصوت
+# Thorfin Audio World
 
 Native Kotlin Android app. Extract audio from **video** or compress **audio** files.
 Three outputs, all on-device, zero native dependencies:

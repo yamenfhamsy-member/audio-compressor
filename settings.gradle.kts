@@ -12,5 +12,5 @@ dependencyResolutionManagement {
         mavenCentral()
     }
 }
-rootProject.name = "AudioCompressor"
+rootProject.name = "Thorfin Audio World"
 include(":app")

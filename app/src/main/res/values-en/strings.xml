@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Audio Compressor</string>
-    <string name="title">Audio Compressor</string>
+    <string name="app_name">Thorfin Audio World</string>
+    <string name="title">Thorfin Audio World</string>
     <string name="lang_toggle">عربي</string>
 
     <string name="sec_source">01 - Source</string>
@@ -47,7 +47,7 @@
 
     <string name="status_offline">Offline — files never leave this device</string>
     <string name="status_added">%d file(s) added</string>
-    <string name="status_done">%d/%d done — saved to Download/AudioCompressor</string>
+    <string name="status_done">%d/%d done — saved to Download/ThorfinAudioWorld</string>
     <string name="status_failed">All failed — try another file</string>
     <string name="status_playing">Playing preview</string>
     <string name="status_loading">Loading preview</string>
