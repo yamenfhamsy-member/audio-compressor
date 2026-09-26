@@ -57,6 +57,7 @@ dependencies {
     implementation(libs.compose.foundation)
     implementation(libs.compose.material3)
 
-    // Pure-JVM Opus encoder (no native libs, keeps the APK tiny)
-    implementation(libs.concentus)
+    // Pure-JVM Opus encoder (no native libs, keeps the APK tiny).
+    // Declared with explicit coordinates (not via version catalog).
+    implementation("io.github.jaredmdobson:concentus:1.0.2")
 }
