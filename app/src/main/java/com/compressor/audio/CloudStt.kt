@@ -30,8 +30,9 @@ object CloudStt {
             if (isCancelled()) throw CancellationException("cloud stt cancelled")
         }
         check()
-        onProgress(0.02f, "upload")
-        val url = GhActions.uploadTemp(file)
+        val url = GhActions.uploadTemp(file) { f ->
+            onProgress(0.02f + 0.06f * f, "upload")
+        }
         check()
         onProgress(0.08f, "dispatch")
         val since = GhActions.dispatch("stt", url, jobId, mapOf("language" to language))
@@ -45,8 +46,10 @@ object CloudStt {
             onProgress(0.08f, "queued")
         }
         require(runId >= 0) { "run not found" }
+        val deadline = System.currentTimeMillis() + 30 * 60_000L
         while (true) {
             check()
+            if (System.currentTimeMillis() > deadline) throw IllegalStateException("run timeout")
             val run = GhActions.pollRun("stt", since)
                 ?: throw IllegalStateException("run lost")
             if (run.status == "completed") {
@@ -57,9 +60,9 @@ object CloudStt {
             Thread.sleep(20_000)
         }
         check()
-        onProgress(0.92f, "download")
-        val zip = GhActions.fetchArtifactPatiently("stt", runId, jobId, isCancelled)
-            ?: throw IllegalStateException("artifact missing")
+        val zip = GhActions.fetchArtifactPatiently("stt", runId, jobId, isCancelled) { f ->
+            onProgress(0.86f + 0.13f * f, "download")
+        } ?: throw IllegalStateException("artifact missing")
         val text = unzipTranscript(zip) ?: throw IllegalStateException("transcript missing")
         onProgress(1f, "done")
         return text.trim()

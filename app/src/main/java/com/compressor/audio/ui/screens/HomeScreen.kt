@@ -440,6 +440,8 @@ fun HomeScreen(lang: String, onToggleLang: () -> Unit) {
     fun cloudErr(e: Exception): String {
         val m = (e.message ?: "").lowercase()
         return when {
+            "timeout" in m || "timed out" in m ->
+                context.getString(R.string.err_timeout)
             "upload" in m || "litterbox" in m || "uguu" in m ->
                 context.getString(R.string.err_upload)
             "cloud busy" in m ->

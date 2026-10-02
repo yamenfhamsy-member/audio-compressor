@@ -23,16 +23,22 @@ object GhActions {
     data class RelayRun(val runId: Long, val status: String, val conclusion: String?)
 
     /** Upload [file] keylessly; returns a public URL valid for days. */
-    fun uploadTemp(file: File): String {
+    fun uploadTemp(file: File, onProgress: (Float) -> Unit = {}): String {
         require(file.exists() && file.length() in 1..209_715_200L) { "file size not supported" }
         try {
-            return uploadLitterbox(file)
+            return uploadLitterbox(file, onProgress)
         } catch (e: Exception) {
-            return uploadUguu(file)
+            return uploadUguu(file, onProgress)
         }
     }
 
-    private fun postMultipart(url: String, fields: Map<String, String>, fileField: String, file: File): String {
+    private fun postMultipart(
+        url: String,
+        fields: Map<String, String>,
+        fileField: String,
+        file: File,
+        onProgress: (Float) -> Unit = {},
+    ): String {
         val boundary = "----Thorfin${System.currentTimeMillis()}"
         val conn = (URL(url).openConnection() as HttpURLConnection).apply {
             requestMethod = "POST"
@@ -49,7 +55,20 @@ object GhActions {
                     outs.write("--$boundary\r\nContent-Disposition: form-data; name=\"$k\"\r\n\r\n$v\r\n".toByteArray())
                 }
                 outs.write("--$boundary\r\nContent-Disposition: form-data; name=\"$fileField\"; filename=\"${file.name}\"\r\nContent-Type: application/octet-stream\r\n\r\n".toByteArray())
-                file.inputStream().buffered().use { it.copyTo(outs) }
+                // Stream the file in chunks with live progress so big
+                // uploads never look frozen.
+                val total = file.length().coerceAtLeast(1)
+                var sent = 0L
+                val buf = ByteArray(256 * 1024)
+                file.inputStream().buffered().use { ins ->
+                    while (true) {
+                        val n = ins.read(buf)
+                        if (n < 0) break
+                        outs.write(buf, 0, n)
+                        sent += n
+                        runCatching { onProgress(sent.toFloat() / total) }
+                    }
+                }
                 outs.write("\r\n--$boundary--\r\n".toByteArray())
             }
             val code = conn.responseCode
@@ -64,20 +83,20 @@ object GhActions {
         }
     }
 
-    private fun uploadLitterbox(file: File): String {
+    private fun uploadLitterbox(file: File, onProgress: (Float) -> Unit = {}): String {
         // Temp host (same infra as catbox), files expire in 72h — plenty for a job.
         // Replies with the bare file URL as plain text.
         val body = postMultipart(
             "https://litterbox.catbox.moe/resources/internals/api.php",
             mapOf("reqtype" to "fileupload", "time" to "72h"),
-            "fileToUpload", file,
+            "fileToUpload", file, onProgress,
         )
         require(body.startsWith("http")) { "litterbox bad reply" }
         return body
     }
 
-    private fun uploadUguu(file: File): String {
-        val resp = postMultipart("https://uguu.se/upload.php", mapOf(), "files[]", file)
+    private fun uploadUguu(file: File, onProgress: (Float) -> Unit = {}): String {
+        val resp = postMultipart("https://uguu.se/upload.php", mapOf(), "files[]", file, onProgress)
         val url = JSONObject(resp).optJSONArray("files")
             ?.optJSONObject(0)?.optString("url", "") ?: ""
         require(url.startsWith("http")) { "uguu parse failed" }
@@ -170,26 +189,65 @@ object GhActions {
     }
 
     /**
-     * Keep asking for the artifact for a while — it can lag the "completed"
-     * status by seconds. Returns null only if it never shows up.
+     * Keep asking for the artifact, then stream it down with live progress.
+     * [onProgress] gets 0 while waiting and 0..1 while bytes arrive, so the
+     * UI never looks frozen on big files. Gives up after ~15 minutes total
+     * instead of hanging forever. Returns null if cancelled or timed out.
      */
     fun fetchArtifactPatiently(
         target: String,
         runId: Long,
         name: String,
         isCancelled: () -> Boolean = { false },
+        onProgress: (Float) -> Unit = {},
     ): ByteArray? {
+        val path = "/api/artifact?target=${enc(target)}&run_id=$runId&name=${enc(name)}"
+        val start = System.currentTimeMillis()
         var waited = 0
-        while (waited < 180_000) {
+        while (System.currentTimeMillis() - start < 15 * 60_000L) {
             if (isCancelled()) return null
-            val zip = try {
-                fetchArtifact(target, runId, name)
-            } catch (e: Exception) {
-                null
+            val conn = (URL("$RELAY$path").openConnection() as HttpURLConnection).apply {
+                connectTimeout = 20_000
+                readTimeout = 30_000
             }
-            if (zip != null) return zip
-            Thread.sleep(10_000)
-            waited += 10_000
+            try {
+                if (conn.responseCode == 404) {
+                    conn.disconnect()
+                    if (waited < 180_000) {
+                        runCatching { onProgress(0f) }
+                        Thread.sleep(10_000)
+                        waited += 10_000
+                        continue
+                    }
+                    return null
+                }
+                require(conn.responseCode == 200) { "cloud busy (${conn.responseCode})" }
+                val total = conn.getHeaderFieldLong("Content-Length", -1)
+                val bos = java.io.ByteArrayOutputStream()
+                conn.inputStream.buffered().use { ins ->
+                    val buf = ByteArray(256 * 1024)
+                    var done = 0L
+                    while (true) {
+                        if (isCancelled()) {
+                            conn.disconnect()
+                            return null
+                        }
+                        val n = ins.read(buf)
+                        if (n < 0) break
+                        bos.write(buf, 0, n)
+                        done += n
+                        if (total > 0) runCatching { onProgress(done.toFloat() / total) }
+                    }
+                }
+                conn.disconnect()
+                runCatching { onProgress(1f) }
+                return bos.toByteArray()
+            } catch (e: Exception) {
+                runCatching { conn.disconnect() }
+                // Mid-download failure: wait a bit, then resume from scratch.
+                if (isCancelled()) return null
+                Thread.sleep(10_000)
+            }
         }
         return null
     }

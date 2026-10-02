@@ -85,6 +85,7 @@
     <string name="stt_cancelled">تكرم — وقفنا متل ما طلبت</string>
     <string name="stt_empty">سمعنا الملف كلو وما لقينا حكي واضح فيه</string>
     <string name="err_upload">ما قدرنا نرفع الملف — تأكد من الإنترنت وجرّب مجدداً</string>
+    <string name="err_timeout">طوّلت المهمة زيادة عن اللزوم — جرّب بملف أصغر أو أعد المحاولة</string>
     <string name="err_cloud_busy">السحابة مشغولة هلق — استنى شوي وجرّب مجدداً</string>
     <string name="err_run">المهمة تعثرت بالسحابة — جرّب مجدداً</string>
     <string name="err_artifact">النتيجة ما وصلت كاملة — جرّب مجدداً</string>    <string name="save_txt">حفظ TXT</string>

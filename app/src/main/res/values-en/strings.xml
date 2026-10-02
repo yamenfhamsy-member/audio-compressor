@@ -85,6 +85,7 @@
     <string name="stt_cancelled">As you wish — stopped</string>
     <string name="stt_empty">Listened to the whole thing and found no clear speech</string>
     <string name="err_upload">Couldn\'t upload your file — check your connection and try again</string>
+    <string name="err_timeout">The job took too long — try a smaller file or try again</string>
     <string name="err_cloud_busy">The cloud is busy right now — wait a little and try again</string>
     <string name="err_run">The cloud job stumbled — try again</string>
     <string name="err_artifact">The result didn\'t arrive whole — try again</string>
