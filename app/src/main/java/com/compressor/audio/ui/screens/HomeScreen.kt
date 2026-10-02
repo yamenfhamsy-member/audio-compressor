@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -23,8 +24,11 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.Text
+import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -123,6 +127,12 @@ fun HomeScreen(lang: String, onToggleLang: () -> Unit) {
     var transcribing by remember { mutableStateOf(false) }
     val sttCancel = remember { AtomicBoolean(false) }
     val busy = running || splitting || transcribing
+    val drawerState = rememberDrawerState(DrawerValue.Closed)
+    val sectionTitles = listOf(
+        stringResource(R.string.tab_compress),
+        stringResource(R.string.tab_split),
+        stringResource(R.string.tab_stt),
+    )
 
     val presetDefs = listOf(
         PresetDef(Preset.MUSIC, R.string.preset_music, R.string.preset_music_sub),
@@ -670,12 +680,63 @@ fun HomeScreen(lang: String, onToggleLang: () -> Unit) {
         }
     }
 
+    ModalNavigationDrawer(
+        drawerState = drawerState,
+        gesturesEnabled = !busy,
+        drawerContent = {
+            Column(
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .width(264.dp)
+                    .background(MonoTokens.Iron)
+                    .padding(16.dp),
+            ) {
+                Text(
+                    text = stringResource(R.string.drawer_title),
+                    fontFamily = FontFamily.Monospace,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 11.sp,
+                    letterSpacing = 2.sp,
+                    color = MonoTokens.Muted,
+                )
+                Spacer(Modifier.height(16.dp))
+                sectionTitles.forEachIndexed { i, name ->
+                    val active = i == tabIndex
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(0.dp))
+                            .background(if (active) MonoTokens.Pineapple else MonoTokens.Steel)
+                            .then(
+                                if (!active) Modifier.border(1.dp, MonoTokens.BorderBlade)
+                                else Modifier,
+                            )
+                            .clickable {
+                                tabIndex = i
+                                scope.launch { drawerState.close() }
+                            }
+                            .padding(horizontal = 12.dp, vertical = 14.dp),
+                        contentAlignment = Alignment.CenterStart,
+                    ) {
+                        Text(
+                            text = name,
+                            fontFamily = FontFamily.SansSerif,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 14.sp,
+                            color = if (active) MonoTokens.OnPineapple else MonoTokens.Bone,
+                        )
+                    }
+                    Spacer(Modifier.height(8.dp))
+                }
+            }
+        },
+    ) {
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(MonoTokens.Canvas),
     ) {
-        // AppBar: title + language toggle, 1px blade divider.
+        // AppBar: burger + two-tone title + language toggle, 1px blade divider.
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -683,15 +744,52 @@ fun HomeScreen(lang: String, onToggleLang: () -> Unit) {
                 .padding(horizontal = 16.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(
-                text = stringResource(R.string.title),
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(2.dp))
+                    .background(MonoTokens.Steel)
+                    .border(1.dp, MonoTokens.BorderBlade)
+                    .clickable { scope.launch { drawerState.open() } }
+                    .padding(horizontal = 10.dp, vertical = 10.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    repeat(3) { line ->
+                        Box(
+                            modifier = Modifier
+                                .width(18.dp)
+                                .height(2.dp)
+                                .background(MonoTokens.Pineapple),
+                        )
+                        if (line < 2) Spacer(Modifier.height(4.dp))
+                    }
+                }
+            }
+            Spacer(Modifier.width(12.dp))
+            Row(
                 modifier = Modifier.weight(1f),
-                fontFamily = FontFamily.SansSerif,
-                fontWeight = FontWeight.Bold,
-                fontSize = 18.sp,
-                letterSpacing = 1.sp,
-                color = MonoTokens.Bone,
-            )
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                val titleParts = stringResource(R.string.title).split(" ", limit = 2)
+                Text(
+                    text = titleParts[0],
+                    fontFamily = FontFamily.SansSerif,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 18.sp,
+                    letterSpacing = 1.sp,
+                    color = MonoTokens.Bone,
+                )
+                if (titleParts.size > 1) {
+                    Text(
+                        text = " " + titleParts[1],
+                        fontFamily = FontFamily.SansSerif,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 18.sp,
+                        letterSpacing = 1.sp,
+                        color = MonoTokens.Leaf,
+                    )
+                }
+            }
             Box(
                 modifier = Modifier
                     .clip(RoundedCornerShape(2.dp))
@@ -747,17 +845,7 @@ fun HomeScreen(lang: String, onToggleLang: () -> Unit) {
                     fontSize = 12.sp,
                     color = MonoTokens.Ash,
                 )
-                Spacer(Modifier.height(16.dp))
-                PresetSegment(
-                    options = listOf(
-                        stringResource(R.string.tab_compress),
-                        stringResource(R.string.tab_split),
-                        stringResource(R.string.tab_stt),
-                    ),
-                    selected = tabIndex,
-                    onSelect = { if (!busy) tabIndex = it },
-                )
-                Spacer(Modifier.height(16.dp))
+                Spacer(Modifier.height(8.dp))
                 if (tabIndex == 0) {
                     SectionLabel(stringResource(R.string.sec_output))
                     Spacer(Modifier.height(8.dp))
@@ -945,6 +1033,7 @@ fun HomeScreen(lang: String, onToggleLang: () -> Unit) {
                 Spacer(Modifier.height(24.dp))
             }
         }
+    }
     }
 }
 

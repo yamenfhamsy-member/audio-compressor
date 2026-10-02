@@ -3,6 +3,7 @@
     <string name="app_name">Pineapple Audio</string>
     <string name="title">Pineapple Audio</string>
     <string name="made_by">صنع بواسطة فريق Pineapple</string>
+    <string name="drawer_title">الأقسام</string>
     <string name="tab_compress">ضغط</string>
     <string name="tab_split">فصل الغناء</string>
     <string name="tab_stt">كلام مكتوب</string>

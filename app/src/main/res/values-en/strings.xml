@@ -3,6 +3,7 @@
     <string name="app_name">Pineapple Audio</string>
     <string name="title">Pineapple Audio</string>
     <string name="made_by">Made by the Pineapple team</string>
+    <string name="drawer_title">Sections</string>
     <string name="tab_compress">Compress</string>
     <string name="tab_split">Split vocals</string>
     <string name="tab_stt">Speech to text</string>

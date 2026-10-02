@@ -21,7 +21,7 @@ import androidx.compose.ui.unit.sp
 import com.compressor.audio.ui.theme.MonoTokens
 
 /**
- * Sharp primary button: bone fill, canvas text, radius 0. Hover = white.
+ * Sharp primary button: pineapple-gold fill, dark text, radius 0.
  * Secondary = steel surface + 1px blade border. No gradients, no pills, no shadows.
  */
 @Composable
@@ -34,12 +34,12 @@ fun VinlandButton(
 ) {
     val bg = when {
         !enabled -> MonoTokens.Steel
-        primary -> MonoTokens.Bone
+        primary -> MonoTokens.Pineapple
         else -> MonoTokens.Steel
     }
     val fg = when {
         !enabled -> MonoTokens.Muted
-        primary -> MonoTokens.Canvas
+        primary -> MonoTokens.OnPineapple
         else -> MonoTokens.Bone
     }
     Box(
@@ -75,7 +75,7 @@ fun SectionLabel(text: String, modifier: Modifier = Modifier) {
     )
 }
 
-/** 2px hairline progress bar. White fill on steel track. No rounded pills. */
+/** 2px hairline progress bar. Pineapple fill on steel track. No rounded pills. */
 @Composable
 fun VinlandProgress(fraction: Float, modifier: Modifier = Modifier) {
     Box(
@@ -88,12 +88,12 @@ fun VinlandProgress(fraction: Float, modifier: Modifier = Modifier) {
             modifier = Modifier
                 .fillMaxWidth(fraction.coerceIn(0f, 1f))
                 .height(2.dp)
-                .background(MonoTokens.Bone),
+                .background(MonoTokens.Pineapple),
         )
     }
 }
 
-/** Segmented preset selector: sharp boxes, active = bone fill. */
+/** Segmented preset selector: sharp boxes, active = pineapple fill. */
 @Composable
 fun PresetSegment(
     options: List<String>,
@@ -111,7 +111,7 @@ fun PresetSegment(
             Box(
                 modifier = Modifier
                     .weight(1f)
-                    .background(if (active) MonoTokens.Bone else MonoTokens.Iron)
+                    .background(if (active) MonoTokens.Pineapple else MonoTokens.Iron)
                     .clickable { onSelect(i) }
                     .padding(vertical = 12.dp),
                 contentAlignment = Alignment.Center,
@@ -121,7 +121,7 @@ fun PresetSegment(
                     fontFamily = FontFamily.Monospace,
                     fontWeight = if (active) FontWeight.Bold else FontWeight.Normal,
                     fontSize = 12.sp,
-                    color = if (active) MonoTokens.Canvas else MonoTokens.Ash,
+                    color = if (active) MonoTokens.OnPineapple else MonoTokens.Ash,
                 )
             }
         }
