@@ -1,7 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Thorfin Audio</string>
-    <string name="title">Thorfin Audio</string>
+    <string name="app_name">Pineapple Audio</string>
+    <string name="title">Pineapple Audio</string>
+    <string name="made_by">Made by the Pineapple team</string>
+    <string name="tab_compress">Compress</string>
+    <string name="tab_split">Split vocals</string>
+    <string name="tab_stt">Speech to text</string>
+    <string name="sd_save">Save results to SD (%1$d)</string>
+    <string name="sd_saved">On the card! %1$d files in the ThorfinAudio folder</string>
+    <string name="sd_saved_internal">No SD card found — saved %1$d files to app storage</string>
+    <string name="sd_empty">Nothing finished in this section yet — finish one first</string>
+    <string name="saved_fallback">Kept in app storage: %1$s</string>
     <string name="lang_toggle">عربي</string>
 
     <string name="sec_source">01 - Your files</string>

@@ -73,6 +73,14 @@ import java.util.concurrent.atomic.AtomicBoolean
 
 enum class JobState { QUEUED, WORKING, DONE, ERROR }
 
+/**
+ * A finished file the user owns: either a shared Downloads Uri, or — when
+ * the shared publish failed verification — a plain file in the app folder.
+ * One of [uri]/[file] is always set. Nothing is ever reported "saved"
+ * unless one of them holds real bytes.
+ */
+data class KeptFile(val name: String, val uri: Uri? = null, val file: File? = null)
+
 data class Job(
     val item: AudioItem,
     val state: JobState = JobState.QUEUED,
@@ -84,6 +92,12 @@ data class Job(
     val note: String? = null,
     /** Transcribed speech text (section 06). */
     val transcript: String? = null,
+    /** Which tab produced this result: 0 compress, 1 split, 2 transcribe. */
+    val origin: Int = -1,
+    /** Finished files owned by this job (1 for compress, 2 for split). */
+    val keptFiles: List<KeptFile> = emptyList(),
+    /** True if any kept file fell back to the app folder. */
+    val fellBack: Boolean = false,
     val id: String = java.util.UUID.randomUUID().toString(),
 )
 
@@ -102,6 +116,13 @@ fun HomeScreen(lang: String, onToggleLang: () -> Unit) {
     var statusLine by remember { mutableStateOf(context.getString(R.string.status_offline)) }
     var player by remember { mutableStateOf<MediaPlayer?>(null) }
     var playingUri by remember { mutableStateOf<Uri?>(null) }
+    // Feature state lives up here so every runner can see every other one.
+    var tabIndex by remember { mutableStateOf(0) }
+    var splitting by remember { mutableStateOf(false) }
+    val splitCancel = remember { AtomicBoolean(false) }
+    var transcribing by remember { mutableStateOf(false) }
+    val sttCancel = remember { AtomicBoolean(false) }
+    val busy = running || splitting || transcribing
 
     val presetDefs = listOf(
         PresetDef(Preset.MUSIC, R.string.preset_music, R.string.preset_music_sub),
@@ -199,8 +220,88 @@ fun HomeScreen(lang: String, onToggleLang: () -> Unit) {
         }
     }
 
+    /**
+     * App-specific folder for finished files: the real SD card when the
+     * phone has one, otherwise internal app storage. Needs no permissions.
+     * Returns the folder plus whether it sits on a removable card.
+     */
+    fun sdFolder(): Pair<File, Boolean> {
+        val dirs = context.getExternalFilesDirs(null).filterNotNull()
+        val target = dirs.elementAtOrNull(1) ?: dirs.elementAtOrNull(0)
+            ?: context.filesDir
+        val folder = File(target, "ThorfinAudio")
+        runCatching { if (!folder.exists()) folder.mkdirs() }
+        return Pair(folder, dirs.size > 1)
+    }
+
+    /**
+     * Keep [file] under [displayName]: first try shared Downloads (verified),
+     * and if that fails keep a real copy in the app folder so the user's
+     * work is never lost. Never returns null without bytes behind it.
+     */
+    fun keepFile(file: File, displayName: String, mime: String): KeptFile? {
+        val uri = runCatching { publishToDownloads(context, file, displayName, mime) }.getOrNull()
+        if (uri != null) return KeptFile(displayName, uri = uri)
+        val (folder, _) = sdFolder()
+        val dest = File(folder, displayName)
+        runCatching { file.copyTo(dest, overwrite = true) }
+        if (dest.exists() && dest.length() > 0) return KeptFile(displayName, file = dest)
+        return null
+    }
+
+    /**
+     * Copy every finished result of tab [kind] into the app SD folder.
+     * Multi-file features (split = vocals + instrumental) copy everything.
+     */
+    fun exportToSd(kind: Int) {
+        val targets = jobs.filter { it.state == JobState.DONE && it.origin == kind }
+        if (targets.isEmpty()) {
+            statusLine = context.getString(R.string.sd_empty)
+            return
+        }
+        statusLine = context.getString(R.string.cloud_download)
+        scope.launch(Dispatchers.IO) {
+            val (folder, onSd) = sdFolder()
+            var count = 0
+            for (job in targets) {
+                if (kind == 2) {
+                    val text = job.transcript ?: continue
+                    val base = job.item.name.substringBeforeLast('.').ifBlank { "audio" }
+                        .replace(Regex("[^A-Za-z0-9._-]"), "_").take(60)
+                    runCatching {
+                        File(folder, "${base}.txt").writeText(text)
+                        count++
+                    }
+                } else {
+                    for (kf in job.keptFiles) {
+                        runCatching {
+                            val ins = when {
+                                kf.uri != null -> context.contentResolver.openInputStream(kf.uri)
+                                kf.file != null -> kf.file.inputStream()
+                                else -> null
+                            } ?: throw IllegalStateException("no source")
+                            ins.use { src ->
+                                File(folder, kf.name).outputStream().use { outs -> src.copyTo(outs) }
+                            }
+                            count++
+                        }
+                    }
+                }
+            }
+            withContext(Dispatchers.Main) {
+                statusLine = if (count > 0) {
+                    context.getString(
+                        if (onSd) R.string.sd_saved else R.string.sd_saved_internal, count,
+                    )
+                } else {
+                    context.getString(R.string.status_failed)
+                }
+            }
+        }
+    }
+
     fun runAll() {
-        if (running || jobs.isEmpty()) return
+        if (running || splitting || transcribing || jobs.isEmpty()) return
         // Snapshot once: files added mid-run must not move the denominator.
         val snapshot = jobs.toList()
         val preset = presetDefs[presetIndex].preset
@@ -220,6 +321,8 @@ fun HomeScreen(lang: String, onToggleLang: () -> Unit) {
                 var ok = false
                 var err: String? = null
                 var outFile: File? = null
+                var keptFiles = emptyList<KeptFile>()
+                var fellBack = false
                 var mime = "audio/ogg"
                 try {
                     if (!job.item.hasAudio) {
@@ -267,10 +370,13 @@ fun HomeScreen(lang: String, onToggleLang: () -> Unit) {
                         if (err == null) {
                             if (outFile.exists() && outFile.length() > 0) {
                                 val pubName = "${base}.$ext"
-                                if (publishToDownloads(context, outFile, pubName, mime) != null) {
+                                val kept = keepFile(outFile, pubName, mime)
+                                if (kept != null) {
                                     ok = true
+                                    keptFiles = listOf(kept)
+                                    fellBack = kept.file != null
                                 } else {
-                                    err = context.getString(R.string.status_play_failed)
+                                    err = context.getString(R.string.status_failed)
                                 }
                             } else {
                                 err = context.getString(R.string.status_failed)
@@ -288,6 +394,13 @@ fun HomeScreen(lang: String, onToggleLang: () -> Unit) {
                                 progress = 1f,
                                 outBytes = outFile?.length() ?: 0,
                                 outName = outFile?.name,
+                                origin = 0,
+                                keptFiles = keptFiles,
+                                fellBack = fellBack,
+                                note = if (fellBack) context.getString(
+                                    R.string.saved_fallback,
+                                    keptFiles.joinToString(", ") { kf -> kf.name },
+                                ) else null,
                             )
                             else it.copy(state = JobState.ERROR, error = err)
                         } else it
@@ -304,12 +417,7 @@ fun HomeScreen(lang: String, onToggleLang: () -> Unit) {
         }
     }
 
-    // ---- Vocal split (section 05, cloud only) ----
-    var splitting by remember { mutableStateOf(false) }
-    val splitCancel = remember { AtomicBoolean(false) }
-    // STT/transcribe state declared early: cloud split below references it.
-    var transcribing by remember { mutableStateOf(false) }
-    val sttCancel = remember { AtomicBoolean(false) }
+    // ---- Vocal split (cloud only) ----
 
     fun extOf(item: AudioItem): String {
         val fromName = item.name.substringAfterLast('.', "").lowercase()
@@ -357,6 +465,8 @@ fun HomeScreen(lang: String, onToggleLang: () -> Unit) {
                 var ok = false
                 var err: String? = null
                 var names = ""
+                var keptFiles = emptyList<KeptFile>()
+                var fellBack = false
                 try {
                     if (!job.item.hasAudio) {
                         err = noAudioMsg
@@ -391,15 +501,26 @@ fun HomeScreen(lang: String, onToggleLang: () -> Unit) {
                         runCatching { src.delete() }
                         val base = job.item.name.substringBeforeLast('.').ifBlank { "audio" }
                             .replace(Regex("[^A-Za-z0-9._-]"), "_").take(60)
-                        val v = publishToDownloads(context, stems.vocals, "${base}_vocals.wav", "audio/wav")
-                        val m = publishToDownloads(context, stems.instrumental, "${base}_instrumental.wav", "audio/wav")
+                        val vName = "${base}_vocals.wav"
+                        val mName = "${base}_instrumental.wav"
+                        val v = keepFile(stems.vocals, vName, "audio/wav")
+                        val m = keepFile(stems.instrumental, mName, "audio/wav")
                         runCatching { stems.vocals.delete() }
                         runCatching { stems.instrumental.delete() }
-                        if (v != null && m != null) {
+                        keptFiles = listOfNotNull(v, m)
+                        fellBack = keptFiles.any { it.file != null }
+                        if (keptFiles.isNotEmpty()) {
                             ok = true
-                            names = context.getString(
-                                R.string.split_saved, "${base}_vocals.wav", "${base}_instrumental.wav",
-                            )
+                            names = if (keptFiles.size == 2 && !fellBack) {
+                                context.getString(R.string.split_saved, vName, mName)
+                            } else {
+                                context.getString(
+                                    R.string.saved_fallback,
+                                    keptFiles.joinToString(", ") { it.name },
+                                )
+                            }
+                        } else {
+                            err = context.getString(R.string.status_failed)
                         }
                     }
                 } catch (e: CancellationException) {
@@ -413,6 +534,7 @@ fun HomeScreen(lang: String, onToggleLang: () -> Unit) {
                             if (ok) it.copy(
                                 state = JobState.DONE, progress = 1f,
                                 outBytes = 0, outName = names, note = names,
+                                origin = 1, keptFiles = keptFiles, fellBack = fellBack,
                             )
                             else it.copy(state = JobState.ERROR, error = err)
                         } else it
@@ -487,6 +609,7 @@ fun HomeScreen(lang: String, onToggleLang: () -> Unit) {
                         if (it.id == job.id) {
                             if (text != null) it.copy(
                                 state = JobState.DONE, progress = 1f, transcript = text,
+                                origin = 2,
                             )
                             else it.copy(state = JobState.ERROR, error = err)
                         } else it
@@ -516,14 +639,34 @@ fun HomeScreen(lang: String, onToggleLang: () -> Unit) {
                 .replace(Regex("[^A-Za-z0-9._-]"), "_").take(60)
             val file = File(context.cacheDir, "${base}.txt")
             runCatching { file.writeText(text) }
-            val uri = publishToDownloads(context, file, "${base}.txt", "text/plain")
+            val kept = keepFile(file, "${base}.txt", "text/plain")
             withContext(Dispatchers.Main) {
-                if (uri != null) {
-                    statusLine = context.getString(R.string.saved_txt, "${base}.txt")
+                statusLine = if (kept == null) {
+                    context.getString(R.string.status_failed)
+                } else if (kept.file != null) {
+                    context.getString(R.string.saved_fallback, "${base}.txt")
                 } else {
-                    statusLine = context.getString(R.string.status_failed)
+                    context.getString(R.string.saved_txt, "${base}.txt")
                 }
             }
+        }
+    }
+
+    @Composable
+    fun SdButton(kind: Int) {
+        val ready = jobs.count {
+            it.state == JobState.DONE && it.origin == kind &&
+                (it.keptFiles.isNotEmpty() || it.transcript != null)
+        }
+        if (ready > 0) {
+            Spacer(Modifier.height(8.dp))
+            VinlandButton(
+                label = stringResource(R.string.sd_save, ready),
+                onClick = { exportToSd(kind) },
+                primary = false,
+                enabled = !busy,
+                modifier = Modifier.fillMaxWidth(),
+            )
         }
     }
 
@@ -583,17 +726,17 @@ fun HomeScreen(lang: String, onToggleLang: () -> Unit) {
                     VinlandButton(
                         label = if (jobs.isEmpty()) stringResource(R.string.pick_audio)
                         else stringResource(R.string.add_more),
-                        onClick = { if (!running) audioPicker.launch("audio/*") },
+                        onClick = { if (!busy) audioPicker.launch("audio/*") },
                         primary = false,
-                        enabled = !running,
+                        enabled = !busy,
                         modifier = Modifier.weight(1f),
                     )
                     Spacer(Modifier.width(8.dp))
                     VinlandButton(
                         label = stringResource(R.string.pick_video),
-                        onClick = { if (!running) videoPicker.launch("video/*") },
+                        onClick = { if (!busy) videoPicker.launch("video/*") },
                         primary = false,
-                        enabled = !running,
+                        enabled = !busy,
                         modifier = Modifier.weight(1f),
                     )
                 }
@@ -605,45 +748,57 @@ fun HomeScreen(lang: String, onToggleLang: () -> Unit) {
                     color = MonoTokens.Ash,
                 )
                 Spacer(Modifier.height(16.dp))
-                SectionLabel(stringResource(R.string.sec_output))
-                Spacer(Modifier.height(8.dp))
                 PresetSegment(
-                    options = outputDefs.map { stringResource(it.title) },
-                    selected = outputIndex,
-                    onSelect = { if (!running) outputIndex = it },
+                    options = listOf(
+                        stringResource(R.string.tab_compress),
+                        stringResource(R.string.tab_split),
+                        stringResource(R.string.tab_stt),
+                    ),
+                    selected = tabIndex,
+                    onSelect = { if (!busy) tabIndex = it },
                 )
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    text = stringResource(outputDefs[outputIndex].sub),
-                    fontFamily = FontFamily.SansSerif,
-                    fontSize = 12.sp,
-                    color = MonoTokens.Ash,
-                )
-                if (outputDefs[outputIndex].mode == OutputMode.MP3_COPY && jobs.isNotEmpty()) {
-                    Spacer(Modifier.height(4.dp))
+                Spacer(Modifier.height(16.dp))
+                if (tabIndex == 0) {
+                    SectionLabel(stringResource(R.string.sec_output))
+                    Spacer(Modifier.height(8.dp))
+                    PresetSegment(
+                        options = outputDefs.map { stringResource(it.title) },
+                        selected = outputIndex,
+                        onSelect = { if (!busy) outputIndex = it },
+                    )
+                    Spacer(Modifier.height(8.dp))
                     Text(
-                        text = stringResource(R.string.mp3_compat, mp3Compat, jobs.size),
-                        fontFamily = FontFamily.Monospace,
+                        text = stringResource(outputDefs[outputIndex].sub),
+                        fontFamily = FontFamily.SansSerif,
                         fontSize = 12.sp,
                         color = MonoTokens.Ash,
                     )
+                    if (outputDefs[outputIndex].mode == OutputMode.MP3_COPY && jobs.isNotEmpty()) {
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            text = stringResource(R.string.mp3_compat, mp3Compat, jobs.size),
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 12.sp,
+                            color = MonoTokens.Ash,
+                        )
+                    }
+                    Spacer(Modifier.height(16.dp))
+                    SectionLabel(stringResource(R.string.sec_preset))
+                    Spacer(Modifier.height(8.dp))
+                    PresetSegment(
+                        options = presetDefs.map { stringResource(it.title) },
+                        selected = presetIndex,
+                        onSelect = { if (!busy) presetIndex = it },
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        text = stringResource(presetDefs[presetIndex].sub),
+                        fontFamily = FontFamily.SansSerif,
+                        fontSize = 12.sp,
+                        color = MonoTokens.Ash,
+                    )
+                    Spacer(Modifier.height(16.dp))
                 }
-                Spacer(Modifier.height(16.dp))
-                SectionLabel(stringResource(R.string.sec_preset))
-                Spacer(Modifier.height(8.dp))
-                PresetSegment(
-                    options = presetDefs.map { stringResource(it.title) },
-                    selected = presetIndex,
-                    onSelect = { if (!running) presetIndex = it },
-                )
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    text = stringResource(presetDefs[presetIndex].sub),
-                    fontFamily = FontFamily.SansSerif,
-                    fontSize = 12.sp,
-                    color = MonoTokens.Ash,
-                )
-                Spacer(Modifier.height(16.dp))
                 SectionLabel(stringResource(R.string.sec_files))
                 Spacer(Modifier.height(8.dp))
             }
@@ -682,71 +837,111 @@ fun HomeScreen(lang: String, onToggleLang: () -> Unit) {
                 item { Spacer(Modifier.height(8.dp)) }
             }
 
-            item {
-                if (running) {
-                    VinlandProgress(fraction = if (jobs.isEmpty()) 0f else doneCount.toFloat() / jobs.size)
+            if (tabIndex == 0) {
+                item {
+                    if (running) {
+                        VinlandProgress(fraction = if (jobs.isEmpty()) 0f else doneCount.toFloat() / jobs.size)
+                        Spacer(Modifier.height(8.dp))
+                    }
+                    VinlandButton(
+                        label = when {
+                            running -> stringResource(R.string.converting, doneCount, jobs.size)
+                            jobs.isEmpty() -> stringResource(R.string.convert)
+                            else -> stringResource(R.string.convert_n, jobs.size)
+                        },
+                        onClick = { runAll() },
+                        enabled = !busy && jobs.isNotEmpty(),
+                        primary = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        text = statusLine,
+                        fontFamily = FontFamily.Monospace,
+                        fontSize = 12.sp,
+                        color = MonoTokens.Ash,
+                    )
+                    SdButton(kind = 0)
                     Spacer(Modifier.height(8.dp))
                 }
-                VinlandButton(
-                    label = when {
-                        running -> stringResource(R.string.converting, doneCount, jobs.size)
-                        jobs.isEmpty() -> stringResource(R.string.convert)
-                        else -> stringResource(R.string.convert_n, jobs.size)
-                    },
-                    onClick = { runAll() },
-                    enabled = !running && jobs.isNotEmpty(),
-                    primary = true,
+            } else if (tabIndex == 1) {
+                item {
+                    SectionLabel(stringResource(R.string.sec_split))
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        text = stringResource(R.string.split_cloud_note),
+                        fontFamily = FontFamily.SansSerif,
+                        fontSize = 12.sp,
+                        color = MonoTokens.Ash,
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    VinlandButton(
+                        label = if (splitting) stringResource(R.string.split_cancel)
+                        else if (jobs.isEmpty()) stringResource(R.string.split_btn)
+                        else stringResource(R.string.split_n, jobs.size),
+                        onClick = {
+                            if (splitting) splitCancel.set(true) else runSplitCloud()
+                        },
+                        primary = true,
+                        enabled = jobs.isNotEmpty() && !busy,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        text = statusLine,
+                        fontFamily = FontFamily.Monospace,
+                        fontSize = 12.sp,
+                        color = MonoTokens.Ash,
+                    )
+                    SdButton(kind = 1)
+                    Spacer(Modifier.height(8.dp))
+                }
+            } else {
+                item {
+                    SectionLabel(stringResource(R.string.sec_stt))
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        text = stringResource(R.string.stt_cloud_note),
+                        fontFamily = FontFamily.SansSerif,
+                        fontSize = 12.sp,
+                        color = MonoTokens.Ash,
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    VinlandButton(
+                        label = if (transcribing) stringResource(R.string.stt_cancel)
+                        else if (jobs.isEmpty()) stringResource(R.string.stt_btn)
+                        else stringResource(R.string.stt_n, jobs.size),
+                        onClick = {
+                            if (transcribing) sttCancel.set(true) else runTranscribe()
+                        },
+                        primary = true,
+                        enabled = jobs.isNotEmpty() && !busy,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        text = statusLine,
+                        fontFamily = FontFamily.Monospace,
+                        fontSize = 12.sp,
+                        color = MonoTokens.Ash,
+                    )
+                    SdButton(kind = 2)
+                    Spacer(Modifier.height(8.dp))
+                }
+            }
+            item {
+                Box(
                     modifier = Modifier.fillMaxWidth(),
-                )
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    text = statusLine,
-                    fontFamily = FontFamily.Monospace,
-                    fontSize = 12.sp,
-                    color = MonoTokens.Ash,
-                )
-                Spacer(Modifier.height(16.dp))
-                SectionLabel(stringResource(R.string.sec_split))
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    text = stringResource(R.string.split_cloud_note),
-                    fontFamily = FontFamily.SansSerif,
-                    fontSize = 12.sp,
-                    color = MonoTokens.Ash,
-                )
-                Spacer(Modifier.height(8.dp))
-                VinlandButton(
-                    label = if (splitting) stringResource(R.string.split_cancel)
-                    else if (jobs.isEmpty()) stringResource(R.string.split_btn)
-                    else stringResource(R.string.split_n, jobs.size),
-                    onClick = {
-                        if (splitting) splitCancel.set(true) else runSplitCloud()
-                    },
-                    primary = true,
-                    enabled = jobs.isNotEmpty() && !running && !transcribing,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                Spacer(Modifier.height(16.dp))
-                SectionLabel(stringResource(R.string.sec_stt))
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    text = stringResource(R.string.stt_cloud_note),
-                    fontFamily = FontFamily.SansSerif,
-                    fontSize = 12.sp,
-                    color = MonoTokens.Ash,
-                )
-                Spacer(Modifier.height(8.dp))
-                VinlandButton(
-                    label = if (transcribing) stringResource(R.string.stt_cancel)
-                    else if (jobs.isEmpty()) stringResource(R.string.stt_btn)
-                    else stringResource(R.string.stt_n, jobs.size),
-                    onClick = {
-                        if (transcribing) sttCancel.set(true) else runTranscribe()
-                    },
-                    primary = true,
-                    enabled = jobs.isNotEmpty() && !running && !splitting,
-                    modifier = Modifier.fillMaxWidth(),
-                )
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        text = stringResource(R.string.made_by),
+                        fontFamily = FontFamily.Monospace,
+                        fontSize = 11.sp,
+                        letterSpacing = 1.sp,
+                        color = MonoTokens.Muted,
+                    )
+                }
                 Spacer(Modifier.height(24.dp))
             }
         }

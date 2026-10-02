@@ -1,7 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Thorfin Audio</string>
-    <string name="title">Thorfin Audio</string>
+    <string name="app_name">Pineapple Audio</string>
+    <string name="title">Pineapple Audio</string>
+    <string name="made_by">صنع بواسطة فريق Pineapple</string>
+    <string name="tab_compress">ضغط</string>
+    <string name="tab_split">فصل الغناء</string>
+    <string name="tab_stt">كلام مكتوب</string>
+    <string name="sd_save">حفظ النتائج على SD (%1$d)</string>
+    <string name="sd_saved">وصلتهن عالبطاقة! %1$d ملفات بمجلد ThorfinAudio</string>
+    <string name="sd_saved_internal">ما لقينا بطاقة SD فحفظنا %1$d ملفات بذاكرة التطبيق</string>
+    <string name="sd_empty">لسا ما خلصت ولا نتيجة بهالقسم — خلّص وحدة وبعدين احفظ</string>
+    <string name="saved_fallback">انحفظ بذاكرة التطبيق: %1$s</string>
     <string name="lang_toggle">EN</string>
 
     <string name="sec_source">01 - هات ملفاتك</string>

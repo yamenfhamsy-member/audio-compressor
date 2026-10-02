@@ -145,5 +145,18 @@ fun publishToDownloads(
     values.clear()
     values.put(MediaStore.Downloads.IS_PENDING, 0)
     resolver.update(dest, values, null, null)
+    // Verify the bytes really landed — some devices report success but hide
+    // empty/broken entries. Never tell the user "saved" unless it is real.
+    if (!mediaUriHasBytes(resolver, dest)) {
+        runCatching { resolver.delete(dest, null, null) }
+        return null
+    }
     return dest
+}
+
+/** True if [uri] opens and holds more than zero bytes. */
+fun mediaUriHasBytes(resolver: ContentResolver, uri: Uri): Boolean {
+    return runCatching {
+        resolver.openAssetFileDescriptor(uri, "r")?.use { it.length > 0 } ?: false
+    }.getOrDefault(false)
 }
