@@ -57,7 +57,7 @@ object CloudSplit {
         }
         check()
         onProgress(0.92f, "download")
-        val zip = GhActions.fetchArtifact("stems", runId, jobId)
+        val zip = GhActions.fetchArtifactPatiently("stems", runId, jobId, isCancelled)
             ?: throw IllegalStateException("artifact missing")
         val (vocals, instrumental) = unzipStems(context, zip, jobId)
         onProgress(1f, "done")

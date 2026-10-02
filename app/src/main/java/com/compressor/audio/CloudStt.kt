@@ -58,7 +58,7 @@ object CloudStt {
         }
         check()
         onProgress(0.92f, "download")
-        val zip = GhActions.fetchArtifact("stt", runId, jobId)
+        val zip = GhActions.fetchArtifactPatiently("stt", runId, jobId, isCancelled)
             ?: throw IllegalStateException("artifact missing")
         val text = unzipTranscript(zip) ?: throw IllegalStateException("transcript missing")
         onProgress(1f, "done")

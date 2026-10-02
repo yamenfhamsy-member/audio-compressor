@@ -318,6 +318,22 @@ fun HomeScreen(lang: String, onToggleLang: () -> Unit) {
         return if (item.isVideo) "mp4" else "mp3"
     }
 
+    /** Translate a cloud failure into words a human would actually say. */
+    fun cloudErr(e: Exception): String {
+        val m = (e.message ?: "").lowercase()
+        return when {
+            "upload" in m || "litterbox" in m || "uguu" in m ->
+                context.getString(R.string.err_upload)
+            "cloud busy" in m ->
+                context.getString(R.string.err_cloud_busy)
+            "run " in m || "run not found" in m || "run lost" in m ->
+                context.getString(R.string.err_run)
+            "artifact" in m || "transcript missing" in m || "vocals missing" in m ->
+                context.getString(R.string.err_artifact)
+            else -> context.getString(R.string.st_error)
+        }
+    }
+
     fun runSplitCloud() {
         if (splitting || running || transcribing || jobs.isEmpty()) return
         val snapshot = jobs.toList()
@@ -389,7 +405,7 @@ fun HomeScreen(lang: String, onToggleLang: () -> Unit) {
                 } catch (e: CancellationException) {
                     err = cancelledMsg
                 } catch (e: Exception) {
-                    err = e.message?.take(160) ?: context.getString(R.string.st_error)
+                    err = cloudErr(e)
                 }
                 withContext(Dispatchers.Main) {
                     jobs = jobs.map {
@@ -464,7 +480,7 @@ fun HomeScreen(lang: String, onToggleLang: () -> Unit) {
                 } catch (e: CancellationException) {
                     err = cancelledMsg
                 } catch (e: Exception) {
-                    err = e.message?.take(160) ?: context.getString(R.string.st_error)
+                    err = cloudErr(e)
                 }
                 withContext(Dispatchers.Main) {
                     jobs = jobs.map {

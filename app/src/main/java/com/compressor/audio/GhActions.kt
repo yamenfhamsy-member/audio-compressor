@@ -55,7 +55,9 @@ object GhActions {
             val code = conn.responseCode
             val body = (if (code in 200..299) conn.inputStream else conn.errorStream)
                 ?.bufferedReader()?.readText()?.trim() ?: ""
-            require(code in 200..299 && body.startsWith("http")) { "upload $code" }
+            // NOTE: return the raw body — each host has its own reply format
+            // (litterbox returns a bare URL, uguu.se returns JSON).
+            require(code in 200..299 && body.isNotEmpty()) { "upload $code" }
             return body
         } finally {
             conn.disconnect()
@@ -64,11 +66,14 @@ object GhActions {
 
     private fun uploadLitterbox(file: File): String {
         // Temp host (same infra as catbox), files expire in 72h — plenty for a job.
-        return postMultipart(
+        // Replies with the bare file URL as plain text.
+        val body = postMultipart(
             "https://litterbox.catbox.moe/resources/internals/api.php",
             mapOf("reqtype" to "fileupload", "time" to "72h"),
             "fileToUpload", file,
         )
+        require(body.startsWith("http")) { "litterbox bad reply" }
+        return body
     }
 
     private fun uploadUguu(file: File): String {
@@ -162,5 +167,30 @@ object GhActions {
         if (code == 404) return null
         require(code == 200) { "cloud busy ($code)" }
         return bytes
+    }
+
+    /**
+     * Keep asking for the artifact for a while — it can lag the "completed"
+     * status by seconds. Returns null only if it never shows up.
+     */
+    fun fetchArtifactPatiently(
+        target: String,
+        runId: Long,
+        name: String,
+        isCancelled: () -> Boolean = { false },
+    ): ByteArray? {
+        var waited = 0
+        while (waited < 180_000) {
+            if (isCancelled()) return null
+            val zip = try {
+                fetchArtifact(target, runId, name)
+            } catch (e: Exception) {
+                null
+            }
+            if (zip != null) return zip
+            Thread.sleep(10_000)
+            waited += 10_000
+        }
+        return null
     }
 }

@@ -74,7 +74,10 @@
     <string name="stt_cancel">خلص بكفي</string>
     <string name="stt_cancelled">تكرم — وقفنا متل ما طلبت</string>
     <string name="stt_empty">سمعنا الملف كلو وما لقينا حكي واضح فيه</string>
-    <string name="save_txt">حفظ TXT</string>
+    <string name="err_upload">ما قدرنا نرفع الملف — تأكد من الإنترنت وجرّب مجدداً</string>
+    <string name="err_cloud_busy">السحابة مشغولة هلق — استنى شوي وجرّب مجدداً</string>
+    <string name="err_run">المهمة تعثرت بالسحابة — جرّب مجدداً</string>
+    <string name="err_artifact">النتيجة ما وصلت كاملة — جرّب مجدداً</string>    <string name="save_txt">حفظ TXT</string>
     <string name="copy_text">نسخ</string>
     <string name="copied">نُسخ! صار فيك تلصقه وين ما بدك</string>
     <string name="saved_txt">انحفظ بنجاح: %1$s</string>
